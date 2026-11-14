@@ -1,0 +1,6 @@
+{
+  "config": {
+    "step": {"user": {"title": "Recorder Studio", "description": "Adds a sidebar panel to manage the recorder (SQLite only)."}},
+    "abort": {"single_instance_allowed": "Recorder Studio is already set up."}
+  }
+}

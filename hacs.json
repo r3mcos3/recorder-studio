@@ -1,0 +1,6 @@
+{
+  "name": "Recorder Studio",
+  "render_readme": true,
+  "homeassistant": "2024.11.0",
+  "zip_release": false
+}
