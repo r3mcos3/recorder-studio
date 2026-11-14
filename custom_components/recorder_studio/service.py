@@ -85,8 +85,11 @@ def build_tree(hass: HomeAssistant) -> list[dict[str, Any]]:
             s.entity_id,
             {"entity_id": s.entity_id, "name": s.attributes.get("friendly_name") or s.entity_id, "device_id": None, "platform": ""},
         )
-    # async_get_devices() avoids the deprecated mapping access to dev_reg.devices (removed in HA 2027.9)
-    all_devices = dev_reg.async_get_devices() if hasattr(dev_reg, "async_get_devices") else dev_reg.devices.values()
+    # Iterating the registry yields DeviceEntry objects on current HA (device ids on older versions);
+    # async_get_devices() without filters does not return all devices.
+    all_devices = list(dev_reg.devices)
+    if all_devices and isinstance(all_devices[0], str):
+        all_devices = [dev_reg.devices[i] for i in all_devices]
     devices = [{"id": d.id, "name": d.name_by_user or d.name} for d in all_devices]
     stats = _data(hass).get("stats") or {}
     return tree.build_tree(devices, list(seen.values()), set(_data(hass)["excluded_entities"]), stats.get("entity_counts", {}), stats.get("total_records"))
