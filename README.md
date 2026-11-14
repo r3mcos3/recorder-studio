@@ -17,8 +17,11 @@ history that is no longer wanted.
 
 - **Per device / per entity recording control.** Switch recording on or off for a whole device or a single entity,
   review the changes, then save them in one go. The result is written to a generated `recorder_studio.yaml`.
-- **See what fills your database.** Total, current and obsolete records, database size (including the WAL and SHM
-  files), the top entities, and **each entity's and device's share of the database in percent**.
+- **See what fills your database.** Total, current and obsolete records, the top entities, and **each entity's and
+  device's share of the database in percent**.
+- **See how big the database is.** The total size (database + WAL + SHM) is always shown next to the title. After an
+  analysis you also get the size per table (states, attributes, statistics, events, …) including indexes, and how much
+  unused space a repack would return to the disk.
 - **Search and filter.** Search by entity id, name, device or platform; filter by domain or status (recorded, excluded,
   excluded but still has history); sort by name or by share of the database.
 - **Safe maintenance.** Purge by retention, purge the history of excluded entities, purge a single entity, repack the
@@ -59,7 +62,7 @@ continue with step 3 above.
 ## First steps
 
 1. **Analyse the database.** On the Overview tab click *Analyse database*. This is read-only and may take a moment
-   on a large database. Statistics are never refreshed automatically; click *Re-analyse* after changes.
+   on a large database (the per-table sizes read every page of the file). The total size is visible without it. Statistics are never refreshed automatically; click *Re-analyse* after changes.
 2. **Check the situation.** The Migration tab tells you whether `configuration.yaml` already includes
    `recorder_studio.yaml`. If not, a blue banner offers a *Set up* shortcut.
 3. **Migrate** once (see [Migration](#migration)).
@@ -70,7 +73,7 @@ continue with step 3 above.
 
 | Tab | What it does |
 | --- | --- |
-| **Overview** | Total / current / obsolete records, database size, records per entity with percentage, composition chart. *Obsolete* means records that still exist for entities that are now excluded. |
+| **Overview** | Total / current / obsolete records, database size split into file / WAL / SHM, records per entity with percentage, composition chart, size per table and reclaimable space. *Obsolete* means records that still exist for entities that are now excluded. |
 | **Entities** | Device tree with a recording toggle per device and per entity, records and share per row, search, filters and sorting. Changes stay pending until you press **Save changes** (a bar at the bottom shows how many). A trash button purges the history of one excluded entity. |
 | **Maintenance** | Purge by retention, purge excluded entities, repack, restart Home Assistant. |
 | **Orphans** | Excluded entities that no longer exist anywhere and have no history. Remove them in bulk; nothing is deleted from the database. |
@@ -177,6 +180,7 @@ two comment lines) into an inline `recorder:` block and remove the include.
 - SQLite only.
 - Purging works per entity, for all excluded entities, or by retention. There is no per-device purge button.
 - Recording changes need a Home Assistant restart.
+- The per-table sizes need SQLite's `dbstat` module; if your SQLite build lacks it, that card is simply hidden.
 - Re-enabling recording for an entity that one of your manual domain/glob rules excludes is not supported; remove or
   narrow the rule instead.
 
