@@ -9,6 +9,19 @@ This is an independent re-implementation inspired by the *functionality* of
 
 > **Purges are permanent.** Make a full HA backup first. Never try purge/migration on a database you care about without one.
 
+## Installation (HACS)
+
+[![Open your Home Assistant instance and open this repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=r3mcos3&repository=recorder-studio&category=integration)
+
+1. Click the button above (or HACS > three dots > *Custom repositories*, add `https://github.com/r3mcos3/recorder-studio`, category *Integration*).
+2. Download **Recorder Studio** in HACS and restart Home Assistant.
+3. Settings > Devices & services > *Add integration* > **Recorder Studio**.
+
+> HACS can only download a repository that is **public** (or reachable with a GitHub token). The button works
+> once the repository is made public.
+
+Manual: copy `custom_components/recorder_studio/` to `<config>/custom_components/` and restart.
+
 ## How it works
 
 The panel writes `recorder_studio.yaml` in your config folder. `configuration.yaml` includes it with
@@ -41,4 +54,5 @@ synthetic SQLite database). The panel is [Lit](https://lit.dev) (BSD-3, vendored
 
 ## Status
 
-v0.1.0, **not yet tested on a live Home Assistant**.
+v0.1.0. Tested read-only on a live Home Assistant; write actions are enabled from this version on.
+Set `READ_ONLY_MODE = True` in `const.py` to refuse all write actions.
