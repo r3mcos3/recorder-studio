@@ -34,7 +34,7 @@ history that is no longer wanted.
 
 ![Entities](docs/images/entities.png)
 
-*(Screenshots are taken from the built-in preview with fake data.)*
+*(Screenshots from a real Home Assistant installation.)*
 
 ## Requirements
 
