@@ -180,6 +180,24 @@ class RecorderStudioPanel extends LitElement {
     );
   }
 
+  /** The recorder runs a purge as a queued task, so analyse repeatedly until the record count has changed and settled. */
+  async _followUp() {
+    let last = this._summary?.total_records ?? null;
+    let changed = false;
+    for (let i = 0; i < 6; i++) {
+      await new Promise((r) => setTimeout(r, i === 0 ? 2000 : 3000));
+      await this._ws("analyze");
+      await this._refresh();
+      const now = this._summary?.total_records ?? null;
+      if (now !== last) {
+        changed = true;
+        last = now;
+        continue; // still moving: check once more
+      }
+      if (changed) return; // changed earlier and now stable
+    }
+  }
+
   /** Opens a confirmation dialog; `onConfirm` runs only after explicit confirmation. */
   _confirm({ title, body, impact, confirmLabel, phrase, danger = true, onConfirm }) {
     this._dialog = { title, body, impact, confirmLabel, phrase, danger, typed: "", onConfirm };
@@ -221,8 +239,9 @@ class RecorderStudioPanel extends LitElement {
           "purge",
           async () => {
             await this._ws("purge", { kind, entity_ids: entityIds, confirm: true, repack: false });
+            await this._followUp();
           },
-          { success: "Purge queued. Re-run the analysis in a moment to see the result." }
+          { success: "Purge finished. The statistics are up to date." }
         ),
     });
   }

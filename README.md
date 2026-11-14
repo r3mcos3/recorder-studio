@@ -117,7 +117,7 @@ Only `exclude.{domains,entity_globs,event_types}` and `include.{domains,entity_g
 - **Restart Home Assistant** is needed to apply recorder configuration changes. Home Assistant validates the
   configuration first and refuses to restart on errors.
 
-Purges are queued by the recorder, so run *Re-analyse* afterwards to see the result.
+Purges are queued by the recorder. After a purge the panel re-analyses the database by itself (a few times, until the numbers stop changing), so the statistics are live without a manual *Re-analyse*.
 
 ## How it works
 
