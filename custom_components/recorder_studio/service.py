@@ -85,6 +85,8 @@ def build_tree(hass: HomeAssistant) -> list[dict[str, Any]]:
             s.entity_id,
             {"entity_id": s.entity_id, "name": s.attributes.get("friendly_name") or s.entity_id, "device_id": None, "platform": ""},
         )
-    devices = [{"id": d.id, "name": d.name_by_user or d.name} for d in dev_reg.devices.values()]
+    # async_get_devices() avoids the deprecated mapping access to dev_reg.devices (removed in HA 2027.9)
+    all_devices = dev_reg.async_get_devices() if hasattr(dev_reg, "async_get_devices") else dev_reg.devices.values()
+    devices = [{"id": d.id, "name": d.name_by_user or d.name} for d in all_devices]
     stats = _data(hass).get("stats") or {}
     return tree.build_tree(devices, list(seen.values()), set(_data(hass)["excluded_entities"]), stats.get("entity_counts", {}), stats.get("total_records"))
