@@ -180,22 +180,29 @@ class RecorderStudioPanel extends LitElement {
     );
   }
 
-  /** The recorder runs a purge as a queued task, so analyse repeatedly until the record count has changed and settled. */
-  async _followUp() {
-    let last = this._summary?.total_records ?? null;
+  /**
+   * The recorder runs a purge as a queued task that can take a minute on a large database, so analyse repeatedly
+   * until the expected number of records is gone (or, without an expectation, the count changed and settled).
+   * Returns true when the purge was seen to finish, false on timeout.
+   */
+  async _followUp(expected = 0) {
+    const start = this._summary?.total_records ?? null;
+    let last = start;
     let changed = false;
-    for (let i = 0; i < 6; i++) {
-      await new Promise((r) => setTimeout(r, i === 0 ? 2000 : 3000));
+    const deadline = Date.now() + 150000;
+    let wait = 2000;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, wait));
+      wait = 5000;
       await this._ws("analyze");
       await this._refresh();
       const now = this._summary?.total_records ?? null;
-      if (now !== last) {
-        changed = true;
-        last = now;
-        continue; // still moving: check once more
-      }
-      if (changed) return; // changed earlier and now stable
+      if (expected > 0 && start !== null && now !== null && start - now >= expected * 0.98) return true;
+      if (expected === 0 && changed && now === last) return true;
+      if (now !== last) changed = true;
+      last = now;
     }
+    return false;
   }
 
   /** Opens a confirmation dialog; `onConfirm` runs only after explicit confirmation. */
@@ -239,9 +246,10 @@ class RecorderStudioPanel extends LitElement {
           "purge",
           async () => {
             await this._ws("purge", { kind, entity_ids: entityIds, confirm: true, repack: false });
-            await this._followUp();
+            this._notify("Purge queued. The statistics refresh automatically when it has finished…");
+            return this._followUp(impact?.records || 0);
           },
-          { success: "Purge finished. The statistics are up to date." }
+          { success: (done) => (done ? "Purge finished. The statistics are up to date." : "The purge is still running. Click Re-analyse in a minute to see the result.") }
         ),
     });
   }

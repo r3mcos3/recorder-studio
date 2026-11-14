@@ -299,3 +299,9 @@ def test_table_sizes_unavailable_returns_empty(monkeypatch):
             raise sqlite3.OperationalError("no such table: dbstat")
 
     assert db_stats.table_sizes(Boom()) == []
+
+
+def test_tiny_share_is_not_rounded_to_zero():
+    ents = [{"entity_id": "sensor.a", "device_id": None}]
+    t = tree.build_tree([], ents, set(), {"sensor.a": 120}, 621803)
+    assert 0 < t[0]["entities"][0]["percent"] < 0.1

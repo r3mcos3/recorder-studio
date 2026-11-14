@@ -20,7 +20,7 @@ def build_tree(
     total = total_records if total_records is not None else sum(counts.values())
 
     def pct(n: int) -> float:
-        return round(n * 100 / total, 2) if total else 0.0
+        return round(n * 100 / total, 4) if total else 0.0
 
     dev_names = {d["id"]: d.get("name") or "Unnamed device" for d in devices}
     groups: dict[str, list[dict[str, Any]]] = {}
