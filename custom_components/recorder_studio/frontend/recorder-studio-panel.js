@@ -251,6 +251,7 @@ class RecorderStudioPanel extends LitElement {
           <h1>Recorder Studio</h1>
           <span class="ver">v${d.version}</span>
         </div>
+        ${d.db_files?.total ? html`<span class="chip-size" title="Database file + WAL + SHM">${icon("database", 16)} ${fmtBytes(d.db_files.total)}</span>` : nothing}
         <div class="grow"></div>
         <button class="btn ghost" @click=${this._refresh} ?disabled=${this._loading}>${icon("refresh", 18)} Refresh</button>
       </header>
@@ -289,7 +290,8 @@ class RecorderStudioPanel extends LitElement {
   _tOverview() {
     const s = this._summary;
     if (!s) {
-      return html`<div class="card empty">${icon("database", 40)}<h2>No statistics yet</h2><p>Analyse the database to see record counts and size. The analysis is read-only.</p>
+      return html`<div class="card empty">${icon("database", 40)}<h2>No statistics yet</h2><p>Analyse the database to see record counts and a size breakdown. The analysis is read-only.</p>
+        ${this._data.db_files?.total ? html`<p class="size-now"><b>${fmtBytes(this._data.db_files.total)}</b> on disk${this._filesText()}</p>` : nothing}
         <button class="btn primary" @click=${this._analyze} ?disabled=${!!this._busy}>${icon("search", 18)} Analyse database</button></div>`;
     }
     const pct = s.total_records ? Math.round((s.obsolete_records / s.total_records) * 100) : 0;
@@ -301,7 +303,7 @@ class RecorderStudioPanel extends LitElement {
         ${this._stat("Total records", fmtNum(s.total_records), `${fmtNum(s.entity_count)} entities in database`)}
         ${this._stat("Current", fmtNum(s.current_records), "from recorded entities", "good")}
         ${this._stat("Obsolete", fmtNum(s.obsolete_records), `${pct}% — from ${fmtNum(s.excluded_with_records)} excluded entities`, s.obsolete_records ? "warn" : "")}
-        ${this._stat("Database size", fmtBytes(s.db_size_bytes), "incl. WAL and SHM files")}
+        ${this._stat("Database size", fmtBytes(this._data.db_files?.total ?? s.db_size_bytes), this._filesText() || "incl. WAL and SHM files")}
       </div>
       <div class="grid2">
         <section class="card">
@@ -329,8 +331,29 @@ class RecorderStudioPanel extends LitElement {
           <button class="btn" @click=${this._analyze} ?disabled=${!!this._busy}>${icon("refresh", 18)} Re-analyse</button>
           ${s.obsolete_records ? html`<button class="btn danger-o" @click=${() => (this._tab = "maintenance")}>Clean up obsolete…</button>` : nothing}
         </section>
-      </div>`;
+      </div>
+      ${this._sizeCard(s)}`;
   }
+  _filesText() {
+    const f = this._data.db_files;
+    if (!f?.total) return "";
+    return ` · db ${fmtBytes(f.db)}${f.wal ? ` · WAL ${fmtBytes(f.wal)}` : ""}${f.shm ? ` · SHM ${fmtBytes(f.shm)}` : ""}`.replace(/^ · /, "");
+  }
+
+  _sizeCard(s) {
+    const tables = s.tables || [];
+    if (!tables.length && !s.free_bytes) return nothing;
+    const total = tables.reduce((a, t) => a + t.bytes, 0) || 1;
+    const max = tables[0]?.bytes || 1;
+    return html`<section class="card">
+      <h2>Size by table <small>${fmtBytes(total)} incl. indexes</small></h2>
+      <ul class="bars">
+        ${tables.slice(0, 8).map((t) => html`<li><span class="lbl" title=${t.name}>${t.name}</span><span class="bar"><i style="width:${Math.max(2, (t.bytes / max) * 100)}%"></i></span><span class="val">${fmtBytes(t.bytes)} <b>${fmtPct((t.bytes / total) * 100)}</b></span></li>`)}
+      </ul>
+      ${s.free_bytes ? html`<p class="muted">Unused space inside the file: <b>${fmtBytes(s.free_bytes)}</b>${s.free_bytes > 0 ? " — a repack returns this to the disk (Maintenance tab)." : ""}</p>` : nothing}
+    </section>`;
+  }
+
   _stat(label, value, sub, tone = "") {
     return html`<div class="card stat ${tone}"><div class="k">${label}</div><div class="v">${value}</div><div class="s">${sub}</div></div>`;
   }
@@ -550,7 +573,7 @@ class RecorderStudioPanel extends LitElement {
     header, nav, main, .banner { max-width: 1100px; margin-inline: auto; padding-inline: 16px; }
     header { display: flex; align-items: center; gap: 12px; padding-block: 16px 8px; }
     .title { display: flex; align-items: center; gap: 10px; color: var(--primary-color); } h1 { margin: 0; font-size: 1.5rem; font-weight: 500; color: var(--primary-text-color); } .ver { color: var(--rs-muted); font-size: .8rem; }
-    .grow { flex: 1; } code, .mono { font-family: ui-monospace, Menlo, monospace; font-size: .82em; } code { background: color-mix(in srgb, var(--primary-text-color) 8%, transparent); padding: 1px 5px; border-radius: 4px; }
+    .size-now { color: var(--primary-text-color); } .grow { flex: 1; } .chip-size { display: inline-flex; align-items: center; gap: 6px; margin-left: 8px; padding: 3px 12px; border-radius: 999px; border: 1px solid var(--rs-line); font-size: .85rem; font-variant-numeric: tabular-nums; } code, .mono { font-family: ui-monospace, Menlo, monospace; font-size: .82em; } code { background: color-mix(in srgb, var(--primary-text-color) 8%, transparent); padding: 1px 5px; border-radius: 4px; }
     h2 { font-size: 1.05rem; font-weight: 500; margin: 0 0 12px; } h2 small { color: var(--rs-muted); font-weight: 400; margin-left: 6px; } h3 { margin: 0 0 4px; font-size: 1rem; font-weight: 500; }
     .muted { color: var(--rs-muted); font-size: .9rem; } .center { display: grid; place-items: center; gap: 8px; min-height: 60vh; text-align: center; } .center.err { color: var(--rs-err); }
     .card { background: var(--card-background-color, #fff); border-radius: var(--rs-radius); border: 1px solid var(--rs-line); padding: 16px; margin-bottom: 12px; box-shadow: var(--ha-card-box-shadow, none); }

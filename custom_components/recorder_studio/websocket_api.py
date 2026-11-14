@@ -64,10 +64,12 @@ def async_register(hass: HomeAssistant) -> None:
 @websocket_api.async_response
 async def ws_get_state(hass, connection, msg):
     d = _d(hass)
+    files = await hass.async_add_executor_job(db_stats.file_sizes, service.db_path(hass))
     connection.send_result(
         msg["id"],
         {
             "version": VERSION,
+            "db_files": files,
             "sqlite": service.is_sqlite(hass),
             "options": d["options"],
             "rules_text": d["rules_text"],

@@ -262,3 +262,40 @@ def test_tree_percent_share():
 def test_top_entities_have_percent(synthetic_db):
     s = db_stats.summarize(db_stats.analyze(synthetic_db), [], set())
     assert s["top_entities"][0] == ["sensor.a", 50, 50.0]
+
+
+def test_file_sizes_include_sidecars(tmp_path):
+    db = tmp_path / "x.db"
+    db.write_bytes(b"a" * 100)
+    (tmp_path / "x.db-wal").write_bytes(b"b" * 40)
+    f = db_stats.file_sizes(db)
+    assert f == {"db": 100, "wal": 40, "shm": 0, "total": 140}
+    assert db_stats.file_sizes(tmp_path / "missing.db")["total"] == 0
+
+
+def test_analyze_has_tables_and_free_bytes(synthetic_db):
+    s = db_stats.analyze(synthetic_db)
+    assert s["files"]["total"] == s["db_size_bytes"] > 0
+    names = {t["name"] for t in s["tables"]}
+    if names:  # dbstat is optional in some SQLite builds
+        assert "states" in names
+        assert s["tables"] == sorted(s["tables"], key=lambda t: -t["bytes"])
+    assert s["free_bytes"] >= 0
+
+
+def test_free_bytes_after_delete(tmp_path):
+    p = tmp_path / "f.db"
+    c = sqlite3.connect(p)
+    c.execute("CREATE TABLE t (x TEXT)")
+    c.executemany("INSERT INTO t VALUES (?)", [("y" * 500,)] * 2000)
+    c.commit(); c.execute("DELETE FROM t"); c.commit()
+    assert db_stats.free_bytes(c) > 100_000
+    c.close()
+
+
+def test_table_sizes_unavailable_returns_empty(monkeypatch):
+    class Boom:
+        def execute(self, *_a):
+            raise sqlite3.OperationalError("no such table: dbstat")
+
+    assert db_stats.table_sizes(Boom()) == []

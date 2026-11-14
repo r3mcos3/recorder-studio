@@ -32,6 +32,41 @@ def total_size_bytes(db_path: Path) -> int:
     return total
 
 
+def file_sizes(db_path: Path) -> dict[str, int]:
+    """Sizes of the database file and its WAL/SHM sidecars (cheap: stat only, no SQL)."""
+    out = {}
+    for key, suffix in (("db", ""), ("wal", "-wal"), ("shm", "-shm")):
+        try:
+            out[key] = db_path.with_name(db_path.name + suffix).stat().st_size
+        except OSError:
+            out[key] = 0
+    out["total"] = out["db"] + out["wal"] + out["shm"]
+    return out
+
+
+def table_sizes(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    """Bytes per table (indexes included) using the dbstat virtual table; [] when unavailable."""
+    try:
+        owner = {n: t for n, t in conn.execute("SELECT name, tbl_name FROM sqlite_master")}
+        sizes: dict[str, int] = {}
+        for name, size in conn.execute("SELECT name, SUM(pgsize) FROM dbstat GROUP BY name"):
+            table = owner.get(name, name)
+            sizes[table] = sizes.get(table, 0) + int(size or 0)
+    except sqlite3.Error:
+        return []
+    return [{"name": n, "bytes": b} for n, b in sorted(sizes.items(), key=lambda kv: -kv[1]) if b]
+
+
+def free_bytes(conn: sqlite3.Connection) -> int:
+    """Space inside the file that is unused and would be returned to the OS by a repack."""
+    try:
+        pages = conn.execute("PRAGMA freelist_count").fetchone()[0]
+        size = conn.execute("PRAGMA page_size").fetchone()[0]
+        return int(pages) * int(size)
+    except sqlite3.Error:
+        return 0
+
+
 def analyze(db_path: Path) -> dict[str, Any]:
     """Per-entity state counts. Opens the database strictly read-only."""
     if not db_path.exists():
@@ -48,6 +83,8 @@ def analyze(db_path: Path) -> dict[str, Any]:
         else:
             sql = "SELECT entity_id, COUNT(*) FROM states GROUP BY entity_id ORDER BY 2 DESC"
         counts = {e: c for e, c in conn.execute(sql) if e}
+        tables = table_sizes(conn)
+        free = free_bytes(conn)
     finally:
         conn.close()
     return {
@@ -55,6 +92,9 @@ def analyze(db_path: Path) -> dict[str, Any]:
         "total_records": sum(counts.values()),
         "db_path": str(db_path),
         "db_size_bytes": total_size_bytes(db_path),
+        "files": file_sizes(db_path),
+        "tables": tables,
+        "free_bytes": free,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "error": None,
     }
@@ -79,6 +119,8 @@ def summarize(stats: dict[str, Any], excluded: list[str], known_entities: set[st
         "orphan_exclusions": orphans,
         "entity_count": len(counts),
         "db_size_bytes": stats.get("db_size_bytes", 0),
+        "tables": stats.get("tables", []),
+        "free_bytes": stats.get("free_bytes", 0),
         "db_path": stats.get("db_path"),
         "generated_at": stats.get("generated_at"),
         "error": stats.get("error"),
