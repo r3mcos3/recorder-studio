@@ -45,11 +45,11 @@ export function createMockHass() {
     const obsolete = ents.filter((e) => !e.recorded).reduce((a, e) => a + e.records, 0);
     return { total_records: total, current_records: total - obsolete, obsolete_records: obsolete, excluded_with_records: ents.filter((e) => !e.recorded && e.records).length,
       orphan_exclusions: S.orphans, entity_count: ents.length, db_size_bytes: total * 118 + 12e6, db_path: "/config/home-assistant_v2.db", generated_at: new Date().toISOString(), error: null,
-      top_entities: ents.map((e) => [e.entity_id, e.records]).sort((a, b) => b[1] - a[1]).slice(0, 12) };
+      top_entities: ents.map((e) => [e.entity_id, e.records, +(e.records * 100 / total).toFixed(2)]).sort((a, b) => b[1] - a[1]).slice(0, 12) };
   };
   const view = () => ({
     version: S.version, sqlite: S.sqlite, options: S.options, rules_text: S.rules_text, yaml_file: S.yaml_file, pending_restart: S.pending_restart, summary: summary(),
-    tree: S.tree.map((d) => ({ ...d, entities: d.entities.map((e) => ({ ...e, records: S.analysed ? e.records : 0 })), records: 0, excluded_count: 0 })),
+    tree: (() => { const tot = all().reduce((a, e) => a + e.records, 0); const p = (n) => (S.analysed && tot ? +(n * 100 / tot).toFixed(2) : 0); return S.tree.map((d) => ({ ...d, entities: d.entities.map((e) => ({ ...e, records: S.analysed ? e.records : 0, percent: p(e.records) })), records: 0, percent: p(d.entities.reduce((a, e) => a + e.records, 0)), excluded_count: 0 })); })(),
     config: { state: S.configState, include_target: "gui_recorder.yaml", legacy_file_present: true, imported: S.configState === "inline" ? { excluded_entities: [] } : null },
   });
   const impact = (ids) => { const m = new Set(ids); const r = all().filter((e) => m.has(e.entity_id)).reduce((a, e) => a + e.records, 0); return { entities: ids.length, records: r, approx_bytes: r * 118 }; };

@@ -87,4 +87,4 @@ def build_tree(hass: HomeAssistant) -> list[dict[str, Any]]:
         )
     devices = [{"id": d.id, "name": d.name_by_user or d.name} for d in dev_reg.devices.values()]
     stats = _data(hass).get("stats") or {}
-    return tree.build_tree(devices, list(seen.values()), set(_data(hass)["excluded_entities"]), stats.get("entity_counts", {}))
+    return tree.build_tree(devices, list(seen.values()), set(_data(hass)["excluded_entities"]), stats.get("entity_counts", {}), stats.get("total_records"))

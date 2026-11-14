@@ -27,6 +27,7 @@ const fmtBytes = (b) => {
   const i = Math.min(Math.floor(Math.log(b) / Math.log(1024)), u.length - 1);
   return `${(b / 1024 ** i).toFixed(i ? 1 : 0)} ${u[i]}`;
 };
+const fmtPct = (p) => (!p ? "–" : p < 0.1 ? "<0.1%" : `${p < 10 ? p.toFixed(1) : Math.round(p)}%`);
 const ago = (iso) => {
   if (!iso) return "never";
   const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
@@ -307,10 +308,10 @@ class RecorderStudioPanel extends LitElement {
           <h2>Records per entity <small>top ${s.top_entities.length}</small></h2>
           <ul class="bars">
             ${s.top_entities.map(
-              ([id, n]) => html`<li class=${classMap({ ex: excluded.has(id) })} title=${excluded.has(id) ? "Excluded, still has history" : id}>
+              ([id, n, p]) => html`<li class=${classMap({ ex: excluded.has(id) })} title=${excluded.has(id) ? "Excluded, still has history" : id}>
                 <span class="lbl">${id}</span>
                 <span class="bar"><i style="width:${Math.max(2, (n / max) * 100)}%"></i></span>
-                <span class="val">${fmtNum(n)}</span>
+                <span class="val">${fmtNum(n)} <b>${fmtPct(p)}</b></span>
               </li>`
             )}
           </ul>
@@ -350,7 +351,7 @@ class RecorderStudioPanel extends LitElement {
       });
       if (!ents.length) continue;
       if (this._sort === "records") ents = [...ents].sort((a, b) => b.records - a.records);
-      out.push({ ...dev, entities: ents, records: ents.reduce((a, e) => a + e.records, 0) });
+      out.push({ ...dev, entities: ents, records: ents.reduce((a, e) => a + e.records, 0), percent: ents.reduce((a, e) => a + e.percent, 0) });
     }
     if (this._sort === "records") out.sort((a, b) => b.records - a.records);
     return out;
@@ -369,7 +370,7 @@ class RecorderStudioPanel extends LitElement {
           <option value="">All domains</option>${domains.map((d) => html`<option value=${d} ?selected=${d === this._domain}>${d}</option>`)}
         </select>
         <select aria-label="Sort" .value=${this._sort} @change=${(e) => (this._sort = e.target.value)}>
-          <option value="name" ?selected=${this._sort === "name"}>Sort by name</option><option value="records" ?selected=${this._sort === "records"}>Sort by records</option>
+          <option value="name" ?selected=${this._sort === "name"}>Sort by name</option><option value="records" ?selected=${this._sort === "records"}>Sort by share of database</option>
         </select>
         <div class="chips">${chips.map(([id, l]) => html`<button class=${classMap({ chip: true, on: this._status === id })} @click=${() => (this._status = id)}>${l}</button>`)}</div>
         <div class="count">${fmtNum(total)} entities in ${tree.length} devices
@@ -389,7 +390,7 @@ class RecorderStudioPanel extends LitElement {
     return html`<section class="card dev">
       <div class="dev-head" @click=${() => { const n = new Set(this._open); n.has(dev.device_id) ? n.delete(dev.device_id) : n.add(dev.device_id); this._open = n; }}>
         <span class=${classMap({ chev: true, open })}>${icon("chevron", 20)}</span>
-        <div class="dev-name"><b>${dev.name}</b><small>${ids.length} entities · ${rec} recorded${dev.records ? ` · ${fmtNum(dev.records)} records` : ""}</small></div>
+        <div class="dev-name"><b>${dev.name}</b><small>${ids.length} entities · ${rec} recorded${dev.records ? ` · ${fmtNum(dev.records)} records (${fmtPct(dev.percent)} of database)` : ""}</small></div>
         <div class="sw-wrap" @click=${(e) => e.stopPropagation()}>
           ${this._switch(state, `Record all entities of ${dev.name}`, () => this._toggle(ids, state !== "all"))}
         </div>
@@ -404,7 +405,7 @@ class RecorderStudioPanel extends LitElement {
     return html`<li class=${classMap({ ent: true, off: !rec, changed })}>
       <div class="ent-name"><span>${e.name}</span><code>${e.entity_id}</code></div>
       <span class="plat">${e.platform}</span>
-      <span class="recs">${e.records ? fmtNum(e.records) : "–"}</span>
+      <span class="recs" title="Share of all records in the database">${e.records ? html`${fmtNum(e.records)} <b>${fmtPct(e.percent)}</b>` : "–"}</span>
       <button class="icon-btn" title=${!rec && e.records ? "Purge history of this entity" : "Nothing to purge"} aria-label="Purge ${e.entity_id}" ?disabled=${this._ro || rec || !e.records} @click=${() => this._askPurge("entities", [e.entity_id], e.entity_id)}>${icon("trash", 18)}</button>
       ${this._switch(rec ? "all" : "none", `Record ${e.entity_id}`, () => this._toggle([e.entity_id], !rec))}
     </li>`;
@@ -564,8 +565,8 @@ class RecorderStudioPanel extends LitElement {
     /* overview */
     .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 12px; } .stat { margin: 0; } .stat .k { color: var(--rs-muted); font-size: .85rem; } .stat .v { font-size: 1.9rem; font-weight: 500; margin: 4px 0; font-variant-numeric: tabular-nums; } .stat .s { color: var(--rs-muted); font-size: .8rem; } .stat.good .v { color: var(--rs-ok); } .stat.warn .v { color: var(--rs-warn); }
     .grid2 { display: grid; grid-template-columns: 3fr 2fr; gap: 12px; } @media (max-width: 800px) { .grid2 { grid-template-columns: 1fr; } }
-    .bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; } .bars li { display: grid; grid-template-columns: minmax(80px, 38%) 1fr auto; gap: 10px; align-items: center; font-size: .85rem; }
-    .bars .lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, monospace; font-size: .78rem; } .bar { background: color-mix(in srgb, var(--primary-text-color) 8%, transparent); border-radius: 4px; height: 10px; overflow: hidden; } .bar i { display: block; height: 100%; background: var(--primary-color); border-radius: 4px; } .bars .ex .bar i { background: var(--rs-warn); } .bars .ex .lbl::after { content: " ⚑"; } .val { font-variant-numeric: tabular-nums; color: var(--rs-muted); min-width: 56px; text-align: right; }
+    .bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; } .bars li { display: grid; grid-template-columns: minmax(80px, 34%) 1fr auto; gap: 10px; align-items: center; font-size: .85rem; }
+    .bars .lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, monospace; font-size: .78rem; } .bar { background: color-mix(in srgb, var(--primary-text-color) 8%, transparent); border-radius: 4px; height: 10px; overflow: hidden; } .bar i { display: block; height: 100%; background: var(--primary-color); border-radius: 4px; } .bars .ex .bar i { background: var(--rs-warn); } .bars .ex .lbl::after { content: " ⚑"; } .val { font-variant-numeric: tabular-nums; color: var(--rs-muted); min-width: 110px; text-align: right; } .val b, .recs b { color: var(--primary-text-color); font-weight: 500; display: inline-block; min-width: 44px; }
     .donut-wrap { display: flex; align-items: center; gap: 20px; margin-bottom: 12px; flex-wrap: wrap; } .donut { --c1: var(--primary-color); --c2: var(--rs-warn); width: 130px; height: 130px; border-radius: 50%; background: conic-gradient(var(--c2) calc(var(--p) * 1%), var(--c1) 0); display: grid; place-items: center; position: relative; } .donut::before { content: ""; position: absolute; inset: 18px; background: var(--card-background-color, #fff); border-radius: 50%; } .donut span { position: relative; font-size: 1.4rem; font-weight: 500; text-align: center; } .donut small { display: block; font-size: .7rem; color: var(--rs-muted); font-weight: 400; }
     .legend { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; font-size: .9rem; } .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; } .legend .c1 { background: var(--primary-color); } .legend .c2 { background: var(--rs-warn); } .legend b { margin-left: 6px; font-variant-numeric: tabular-nums; }
     /* entities */
@@ -576,7 +577,7 @@ class RecorderStudioPanel extends LitElement {
     .count { color: var(--rs-muted); font-size: .85rem; display: flex; gap: 12px; flex-wrap: wrap; } .bulk { margin-left: auto; } .hint { color: var(--rs-muted); font-size: .85rem; margin: 0 4px 10px; }
     .dev { padding: 0; overflow: hidden; } .dev-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px; cursor: pointer; } .dev-head:hover { background: color-mix(in srgb, var(--primary-text-color) 4%, transparent); }
     .chev { display: grid; transition: transform .15s; color: var(--rs-muted); } .chev.open { transform: rotate(90deg); } .dev-name { flex: 1; min-width: 0; display: flex; flex-direction: column; } .dev-name b { font-weight: 500; overflow: hidden; text-overflow: ellipsis; } .dev-name small { color: var(--rs-muted); }
-    .ents { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--rs-line); } .ent { display: grid; grid-template-columns: 1fr 110px 80px 34px 48px; gap: 8px; align-items: center; padding: 8px 14px 8px 42px; border-bottom: 1px solid var(--rs-line); } .ent:last-child { border-bottom: 0; }
+    .ents { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--rs-line); } .ent { display: grid; grid-template-columns: 1fr 90px 150px 34px 48px; gap: 8px; align-items: center; padding: 8px 14px 8px 42px; border-bottom: 1px solid var(--rs-line); } .ent:last-child { border-bottom: 0; }
     .ent.off .ent-name span { text-decoration: line-through; opacity: .6; } .ent.changed { background: color-mix(in srgb, var(--primary-color) 9%, transparent); box-shadow: inset 3px 0 var(--primary-color); }
     .ent-name { display: flex; flex-direction: column; min-width: 0; } .ent-name span, .ent-name code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .ent-name code { background: none; padding: 0; color: var(--rs-muted); } .plat { color: var(--rs-muted); font-size: .8rem; overflow: hidden; text-overflow: ellipsis; } .recs { text-align: right; font-variant-numeric: tabular-nums; color: var(--rs-muted); font-size: .85rem; }
     @media (max-width: 640px) { .ent { grid-template-columns: 1fr 34px 48px; padding-left: 16px; } .plat, .recs { display: none; } }

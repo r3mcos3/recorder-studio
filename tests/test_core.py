@@ -246,3 +246,19 @@ def test_all_write_commands_are_guarded():
     for name in ["ws_get_state", "ws_analyze", "ws_preview_purge", "ws_migration_preview"]:
         body = src.split(f"async def {name}(hass, connection, msg):\n", 1)[1][:150]
         assert "READ_ONLY_MODE" not in body, name
+
+
+def test_tree_percent_share():
+    ents = [{"entity_id": "sensor.a", "device_id": "d"}, {"entity_id": "sensor.b", "device_id": "d"}, {"entity_id": "sensor.c"}]
+    t = tree.build_tree([{"id": "d", "name": "D"}], ents, set(), {"sensor.a": 50, "sensor.b": 25, "sensor.c": 25})
+    dev = t[0]
+    assert [e["percent"] for e in dev["entities"]] == [50.0, 25.0] and dev["percent"] == 75.0
+    # explicit total (e.g. rows of entities that no longer exist still count towards the database)
+    t = tree.build_tree([], ents[:1], set(), {"sensor.a": 50}, total_records=200)
+    assert t[0]["entities"][0]["percent"] == 25.0
+    assert tree.build_tree([], ents[:1], set(), {})[0]["entities"][0]["percent"] == 0.0
+
+
+def test_top_entities_have_percent(synthetic_db):
+    s = db_stats.summarize(db_stats.analyze(synthetic_db), [], set())
+    assert s["top_entities"][0] == ["sensor.a", 50, 50.0]

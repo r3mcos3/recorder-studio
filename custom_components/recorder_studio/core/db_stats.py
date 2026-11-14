@@ -82,7 +82,7 @@ def summarize(stats: dict[str, Any], excluded: list[str], known_entities: set[st
         "db_path": stats.get("db_path"),
         "generated_at": stats.get("generated_at"),
         "error": stats.get("error"),
-        "top_entities": list(counts.items())[:15],
+        "top_entities": [[e, c, round(c * 100 / total, 2) if total else 0.0] for e, c in list(counts.items())[:15]],
     }
 
 

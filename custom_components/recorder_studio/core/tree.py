@@ -11,8 +11,17 @@ def build_tree(
     entities: list[dict[str, Any]],
     excluded: set[str],
     counts: dict[str, int],
+    total_records: int | None = None,
 ) -> list[dict[str, Any]]:
-    """devices: {id,name}; entities: {entity_id,name,device_id,platform,domain}."""
+    """devices: {id,name}; entities: {entity_id,name,device_id,platform,domain}.
+
+    `percent` is the share of the whole recorder database (total_records, default: sum of counts).
+    """
+    total = total_records if total_records is not None else sum(counts.values())
+
+    def pct(n: int) -> float:
+        return round(n * 100 / total, 2) if total else 0.0
+
     dev_names = {d["id"]: d.get("name") or "Unnamed device" for d in devices}
     groups: dict[str, list[dict[str, Any]]] = {}
     for ent in entities:
@@ -24,6 +33,7 @@ def build_tree(
             "platform": ent.get("platform") or "",
             "recorded": eid not in excluded,
             "records": counts.get(eid, 0),
+            "percent": pct(counts.get(eid, 0)),
         }
         groups.setdefault(ent.get("device_id") or NO_DEVICE, []).append(item)
 
@@ -36,6 +46,7 @@ def build_tree(
                 "name": "Entities without device" if dev_id == NO_DEVICE else dev_names.get(dev_id, "Unknown device"),
                 "entities": items,
                 "records": sum(i["records"] for i in items),
+                "percent": pct(sum(i["records"] for i in items)),
                 "excluded_count": sum(1 for i in items if not i["recorded"]),
             }
         )
