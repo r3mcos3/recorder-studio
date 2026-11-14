@@ -18,3 +18,8 @@ DEFAULT_DATA = {
     "rules_text": "",
     "stats": None,
 }
+
+# First live test: every write action (yaml, purge, repack, restart, migration, settings) is refused
+# server-side. Statistics (read-only SQLite) and the entity list keep working. Set to False only after
+# explicit approval to enable writes.
+READ_ONLY_MODE = True

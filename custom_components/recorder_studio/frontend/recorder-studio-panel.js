@@ -129,6 +129,9 @@ class RecorderStudioPanel extends LitElement {
     this._toastTimer = setTimeout(() => (this._toast = null), 5000);
   }
 
+  get _ro() {
+    return !!this._data?.read_only;
+  }
   get _summary() {
     return this._data?.summary;
   }
@@ -251,12 +254,13 @@ class RecorderStudioPanel extends LitElement {
         <button class="btn ghost" @click=${this._refresh} ?disabled=${this._loading}>${icon("refresh", 18)} Refresh</button>
       </header>
 
+      ${d.read_only ? html`<div class="banner info">${icon("check")}<span><b>Read-only mode.</b> Statistics and the entity list work; saving, purging, repacking, restarting and migration are disabled.</span></div>` : nothing}
       ${d.sqlite === false ? html`<div class="banner error">${icon("warn")} The recorder does not use SQLite. This integration only supports SQLite.</div>` : nothing}
-      ${d.pending_restart
+      ${d.pending_restart && !d.read_only
         ? html`<div class="banner warn">${icon("warn")}<span>Changes are saved to <code>${d.yaml_file}</code> but only apply after a restart.</span>
             <button class="btn small" @click=${this._askRestart}>${icon("power", 16)} Restart</button></div>`
         : nothing}
-      ${d.config.state !== "active"
+      ${d.config.state !== "active" && !d.read_only
         ? html`<div class="banner info">${icon("swap")}<span>This file is not active yet: <code>configuration.yaml</code> does not include it.</span>
             <button class="btn small" @click=${() => (this._tab = "migration")}>Set up</button></div>`
         : nothing}
@@ -401,13 +405,13 @@ class RecorderStudioPanel extends LitElement {
       <div class="ent-name"><span>${e.name}</span><code>${e.entity_id}</code></div>
       <span class="plat">${e.platform}</span>
       <span class="recs">${e.records ? fmtNum(e.records) : "–"}</span>
-      <button class="icon-btn" title=${!rec && e.records ? "Purge history of this entity" : "Nothing to purge"} aria-label="Purge ${e.entity_id}" ?disabled=${rec || !e.records} @click=${() => this._askPurge("entities", [e.entity_id], e.entity_id)}>${icon("trash", 18)}</button>
+      <button class="icon-btn" title=${!rec && e.records ? "Purge history of this entity" : "Nothing to purge"} aria-label="Purge ${e.entity_id}" ?disabled=${this._ro || rec || !e.records} @click=${() => this._askPurge("entities", [e.entity_id], e.entity_id)}>${icon("trash", 18)}</button>
       ${this._switch(rec ? "all" : "none", `Record ${e.entity_id}`, () => this._toggle([e.entity_id], !rec))}
     </li>`;
   }
 
   _switch(state, label, onClick) {
-    return html`<button role="switch" aria-checked=${state === "all" ? "true" : state === "mixed" ? "mixed" : "false"} aria-label=${label} class="sw ${state}" @click=${onClick}><i></i></button>`;
+    return html`<button role="switch" aria-checked=${state === "all" ? "true" : state === "mixed" ? "mixed" : "false"} aria-label=${label} class="sw ${state}" ?disabled=${this._ro} title=${this._ro ? "Read-only mode" : ""} @click=${onClick}><i></i></button>`;
   }
 
   _renderSaveBar() {
@@ -436,7 +440,7 @@ class RecorderStudioPanel extends LitElement {
   }
   _action(title, text, label, fn, danger = false, disabledReason = "") {
     return html`<div class="card action"><div><h3>${title}</h3><p>${text}</p></div>
-      <button class=${classMap({ btn: true, "danger-o": danger })} title=${disabledReason} ?disabled=${!!this._busy || !!disabledReason} @click=${fn}>${label}</button></div>`;
+      <button class=${classMap({ btn: true, "danger-o": danger })} title=${disabledReason} ?disabled=${this._ro || !!this._busy || !!disabledReason} @click=${fn}>${label}</button></div>`;
   }
 
   /* ---------- Orphans ---------- */
@@ -448,7 +452,7 @@ class RecorderStudioPanel extends LitElement {
       <h2>${list.length} orphaned exclusion${list.length > 1 ? "s" : ""}</h2>
       <p class="muted">These entities are excluded but no longer exist in Home Assistant and have no history. Removing them tidies <code>${this._data.yaml_file}</code>.</p>
       <ul class="plain">${list.map((id) => html`<li><code>${id}</code></li>`)}</ul>
-      <button class="btn danger-o" @click=${() => this._confirm({ title: "Remove orphaned exclusions", body: `${list.length} entries will be removed from the exclusion list. Nothing is deleted from the database.`, confirmLabel: "Remove", onConfirm: () => this._run("orph", async () => { await this._ws("remove_orphans"); await this._refresh(); }, { success: "Removed. Restart to apply." }) })}>${icon("trash", 18)} Remove all ${list.length}</button>
+      <button class="btn danger-o" ?disabled=${this._ro} @click=${() => this._confirm({ title: "Remove orphaned exclusions", body: `${list.length} entries will be removed from the exclusion list. Nothing is deleted from the database.`, confirmLabel: "Remove", onConfirm: () => this._run("orph", async () => { await this._ws("remove_orphans"); await this._refresh(); }, { success: "Removed. Restart to apply." }) })}>${icon("trash", 18)} Remove all ${list.length}</button>
     </div>`;
   }
 
@@ -480,9 +484,9 @@ class RecorderStudioPanel extends LitElement {
         <h2>Preview: ${m.source === "legacy" ? "gui_recorder.yaml" : "configuration.yaml"}</h2>
         <p><b>${fmtNum(m.import.excluded_count)}</b> excluded entities will be imported. This replaces the current Recorder Studio exclusion list.</p>
         ${m.import.warnings.length ? html`<ul class="warnings">${m.import.warnings.map((w) => html`<li>${icon("warn", 16)} ${w}</li>`)}</ul>` : nothing}
-        <button class="btn primary" ?disabled=${!!this._busy} @click=${() => this._confirm({ title: "Import configuration", body: `Replaces the current exclusions with ${m.import.excluded_count} imported ones.`, confirmLabel: "Import", danger: false, onConfirm: async () => { const r = await this._run("mig", () => this._ws("migration_import", { source: m.source, confirm: true }), { success: "Imported." }); if (r) { this._migration = null; await this._refresh(); } } })}>Import now</button>
+        <button class="btn primary" ?disabled=${this._ro || !!this._busy} @click=${() => this._confirm({ title: "Import configuration", body: `Replaces the current exclusions with ${m.import.excluded_count} imported ones.`, confirmLabel: "Import", danger: false, onConfirm: async () => { const r = await this._run("mig", () => this._ws("migration_import", { source: m.source, confirm: true }), { success: "Imported." }); if (r) { this._migration = null; await this._refresh(); } } })}>Import now</button>
         ${m.diff ? html`<h3>Activation diff (configuration.yaml)</h3><pre class="diff">${m.diff.split("\n").map((l) => html`<span class=${l.startsWith("+") && !l.startsWith("+++") ? "add" : l.startsWith("-") && !l.startsWith("---") ? "del" : ""}>${l}\n</span>`)}</pre>
-          <button class="btn danger-o" ?disabled=${!!this._busy} @click=${() => this._confirm({ title: "Activate in configuration.yaml", body: "A backup of configuration.yaml is created first. The recorder block is replaced by an include; a restart is needed.", confirmLabel: "Activate", danger: false, onConfirm: async () => { const r = await this._run("mig", () => this._ws("migration_activate", { confirm: true }), { success: (x) => `Activated. Backup: ${x.backup || "none"}` }); if (r) { this._migration = null; await this._refresh(); } } })}>Activate include</button>` : nothing}
+          <button class="btn danger-o" ?disabled=${this._ro || !!this._busy} @click=${() => this._confirm({ title: "Activate in configuration.yaml", body: "A backup of configuration.yaml is created first. The recorder block is replaced by an include; a restart is needed.", confirmLabel: "Activate", danger: false, onConfirm: async () => { const r = await this._run("mig", () => this._ws("migration_activate", { confirm: true }), { success: (x) => `Activated. Backup: ${x.backup || "none"}` }); if (r) { this._migration = null; await this._refresh(); } } })}>Activate include</button>` : nothing}
       </div>` : nothing}`;
   }
 
@@ -500,7 +504,7 @@ class RecorderStudioPanel extends LitElement {
       <h2>Manual rules</h2>
       <p class="muted">Optional YAML for domain, glob and event-type rules. Individual entities are managed on the Entities tab.</p>
       <textarea rows="7" spellcheck="false" placeholder="exclude:\n  entity_globs:\n    - sensor.*_uptime" .value=${f.rules_text} @input=${(e) => set("rules_text", e.target.value)}></textarea>
-      <div class="row"><button class="btn primary" ?disabled=${!dirty || !!this._busy} @click=${() => this._run("save", async () => { await this._ws("save_settings", { ...f }); await this._refresh(); }, { success: "Settings saved. Restart to apply." })}>Save settings</button>
+      <div class="row"><button class="btn primary" ?disabled=${this._ro || !dirty || !!this._busy} @click=${() => this._run("save", async () => { await this._ws("save_settings", { ...f }); await this._refresh(); }, { success: "Settings saved. Restart to apply." })}>Save settings</button>
       <button class="btn" ?disabled=${!dirty} @click=${() => (this._form = { ...this._data.options, rules_text: this._data.rules_text })}>Reset</button></div>
     </div>`;
   }
@@ -577,7 +581,7 @@ class RecorderStudioPanel extends LitElement {
     .ent-name { display: flex; flex-direction: column; min-width: 0; } .ent-name span, .ent-name code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .ent-name code { background: none; padding: 0; color: var(--rs-muted); } .plat { color: var(--rs-muted); font-size: .8rem; overflow: hidden; text-overflow: ellipsis; } .recs { text-align: right; font-variant-numeric: tabular-nums; color: var(--rs-muted); font-size: .85rem; }
     @media (max-width: 640px) { .ent { grid-template-columns: 1fr 34px 48px; padding-left: 16px; } .plat, .recs { display: none; } }
     .sw { width: 44px; height: 24px; border-radius: 999px; border: 0; background: color-mix(in srgb, var(--primary-text-color) 28%, transparent); position: relative; cursor: pointer; padding: 0; transition: background .15s; flex: none; } .sw i { position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: transform .15s; box-shadow: 0 1px 3px rgba(0,0,0,.35); }
-    .sw.all { background: var(--primary-color); } .sw.all i { transform: translateX(20px); } .sw.mixed { background: var(--rs-warn); } .sw.mixed i { transform: translateX(10px); } .sw:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
+    .sw.all { background: var(--primary-color); } .sw.all i { transform: translateX(20px); } .sw.mixed { background: var(--rs-warn); } .sw.mixed i { transform: translateX(10px); } .sw:disabled { opacity: .55; cursor: not-allowed; } .sw:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
     .savebar { position: fixed; left: 50%; transform: translateX(-50%); bottom: 16px; z-index: 10; display: flex; align-items: center; gap: 10px; width: min(760px, calc(100% - 24px)); padding: 10px 14px; background: var(--card-background-color, #fff); border: 1px solid var(--primary-color); border-radius: 999px; box-shadow: 0 6px 24px rgba(0,0,0,.28); font-size: .9rem; } @media (max-width: 600px) { .savebar { border-radius: 16px; flex-wrap: wrap; } }
     /* maintenance */
     .warnbox { display: flex; gap: 10px; align-items: center; padding: 12px 14px; border-radius: var(--rs-radius); margin-bottom: 12px; background: color-mix(in srgb, var(--rs-err) 12%, transparent); border: 1px solid color-mix(in srgb, var(--rs-err) 45%, transparent); }

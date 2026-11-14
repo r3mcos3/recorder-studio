@@ -229,3 +229,20 @@ def test_tagged_db_url_not_imported():
     info = migration.inspect_configuration(CFG, "x.yaml")["imported"]
     assert "db_url" not in info["options"]
     assert any("db_url" in w for w in info["warnings"])
+
+
+def test_all_write_commands_are_guarded():
+    """Every websocket write handler must start with the READ_ONLY_MODE guard."""
+    import re
+    from pathlib import Path
+
+    src = (Path(__file__).parent.parent / "custom_components/recorder_studio/websocket_api.py").read_text()
+    writers = ["ws_set_recorded", "ws_save_settings", "ws_purge", "ws_repack", "ws_restart",
+               "ws_remove_orphans", "ws_migration_import", "ws_migration_activate"]
+    for name in writers:
+        body = src.split(f"async def {name}(hass, connection, msg):\n", 1)[1][:200]
+        assert "READ_ONLY_MODE" in body, name
+    # read-only commands must stay usable
+    for name in ["ws_get_state", "ws_analyze", "ws_preview_purge", "ws_migration_preview"]:
+        body = src.split(f"async def {name}(hass, connection, msg):\n", 1)[1][:150]
+        assert "READ_ONLY_MODE" not in body, name

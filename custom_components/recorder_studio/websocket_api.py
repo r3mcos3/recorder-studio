@@ -11,7 +11,7 @@ from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 
 from . import service
-from .const import DOMAIN, GENERATED_FILE, LEGACY_FILE, VERSION
+from .const import DOMAIN, GENERATED_FILE, LEGACY_FILE, READ_ONLY_MODE, VERSION
 from .core import db_stats, migration
 from .core.rules import parse_manual_rules
 from .storage import async_save
@@ -76,6 +76,7 @@ async def ws_get_state(hass, connection, msg):
             "config": await _config_info(hass),
             "pending_restart": hass.data[DOMAIN].get("pending_restart", False),
             "yaml_file": GENERATED_FILE,
+            "read_only": READ_ONLY_MODE,
         },
     )
 
@@ -86,6 +87,9 @@ async def ws_get_state(hass, connection, msg):
 @websocket_api.require_admin
 @websocket_api.async_response
 async def ws_set_recorded(hass, connection, msg):
+    if READ_ONLY_MODE:
+        connection.send_error(msg["id"], "read_only", "Recorder Studio is in read-only mode: write actions are disabled.")
+        return
     d = _d(hass)
     current = set(d["excluded_entities"])
     ids = {e.strip() for e in msg["entity_ids"] if e.strip()}
@@ -110,6 +114,9 @@ async def ws_set_recorded(hass, connection, msg):
 @websocket_api.require_admin
 @websocket_api.async_response
 async def ws_save_settings(hass, connection, msg):
+    if READ_ONLY_MODE:
+        connection.send_error(msg["id"], "read_only", "Recorder Studio is in read-only mode: write actions are disabled.")
+        return
     try:
         parse_manual_rules(msg["rules_text"])
     except ValueError as err:
@@ -160,6 +167,9 @@ async def ws_preview_purge(hass, connection, msg):
 @websocket_api.require_admin
 @websocket_api.async_response
 async def ws_purge(hass, connection, msg):
+    if READ_ONLY_MODE:
+        connection.send_error(msg["id"], "read_only", "Recorder Studio is in read-only mode: write actions are disabled.")
+        return
     if msg["kind"] == "retention":
         await hass.services.async_call(
             "recorder", "purge", {"keep_days": _d(hass)["options"]["purge_keep_days"], "repack": msg["repack"]}, blocking=True
@@ -180,6 +190,9 @@ async def ws_purge(hass, connection, msg):
 @websocket_api.require_admin
 @websocket_api.async_response
 async def ws_repack(hass, connection, msg):
+    if READ_ONLY_MODE:
+        connection.send_error(msg["id"], "read_only", "Recorder Studio is in read-only mode: write actions are disabled.")
+        return
     await hass.services.async_call("recorder", "purge", {"keep_days": _d(hass)["options"]["purge_keep_days"], "repack": True})
     connection.send_result(msg["id"], {"queued": True})
 
@@ -188,6 +201,9 @@ async def ws_repack(hass, connection, msg):
 @websocket_api.require_admin
 @websocket_api.async_response
 async def ws_restart(hass, connection, msg):
+    if READ_ONLY_MODE:
+        connection.send_error(msg["id"], "read_only", "Recorder Studio is in read-only mode: write actions are disabled.")
+        return
     # homeassistant.restart validates the config first and refuses on errors.
     try:
         await hass.services.async_call("homeassistant", "restart", {}, blocking=False)
@@ -201,6 +217,9 @@ async def ws_restart(hass, connection, msg):
 @websocket_api.require_admin
 @websocket_api.async_response
 async def ws_remove_orphans(hass, connection, msg):
+    if READ_ONLY_MODE:
+        connection.send_error(msg["id"], "read_only", "Recorder Studio is in read-only mode: write actions are disabled.")
+        return
     s = _summary(hass)
     orphans = set(s["orphan_exclusions"]) if s else set()
     d = _d(hass)
@@ -246,6 +265,9 @@ async def ws_migration_preview(hass, connection, msg):
 @websocket_api.require_admin
 @websocket_api.async_response
 async def ws_migration_import(hass, connection, msg):
+    if READ_ONLY_MODE:
+        connection.send_error(msg["id"], "read_only", "Recorder Studio is in read-only mode: write actions are disabled.")
+        return
     imp = await _load_import(hass, msg["source"])
     if imp is None:
         connection.send_error(msg["id"], "nothing_to_import", "No recorder configuration found at that source.")
@@ -275,6 +297,9 @@ def _activate_files(config_path: Path) -> str:
 @websocket_api.require_admin
 @websocket_api.async_response
 async def ws_migration_activate(hass, connection, msg):
+    if READ_ONLY_MODE:
+        connection.send_error(msg["id"], "read_only", "Recorder Studio is in read-only mode: write actions are disabled.")
+        return
     await service.async_write_yaml(hass)  # the include target must exist before we point to it
     backup = await hass.async_add_executor_job(_activate_files, Path(hass.config.path(CONFIG_FILE)))
     hass.data[DOMAIN]["pending_restart"] = True
