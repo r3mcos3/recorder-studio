@@ -263,7 +263,7 @@ class RecorderStudioPanel extends LitElement {
         : nothing}
       ${d.config.state !== "active" && !d.read_only
         ? html`<div class="banner info">${icon("swap")}<span>This file is not active yet: <code>configuration.yaml</code> does not include it.</span>
-            <button class="btn small" @click=${() => (this._tab = "migration")}>Set up</button></div>`
+            <button class="btn small" ?disabled=${!!this._busy} @click=${this._setup}>Set up</button></div>`
         : nothing}
 
       <nav role="tablist">
@@ -463,6 +463,20 @@ class RecorderStudioPanel extends LitElement {
     if (res) this._migration = { source, ...res };
   }
 
+  /** Banner shortcut: go to Migration and open the activation preview (diff) straight away. */
+  async _setup() {
+    this._tab = "migration";
+    const c = this._data.config;
+    const source = c.imported ? "configuration" : c.legacy_file_present ? "legacy" : null;
+    if (!source) {
+      this._notify("Nothing to import was found; configuration.yaml can still be activated from the Migration tab.");
+      return;
+    }
+    await this._previewMigration(source);
+    await this.updateComplete;
+    this.renderRoot.querySelector("#mig-preview")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   _tMigration() {
     const c = this._data.config;
     const m = this._migration;
@@ -481,7 +495,7 @@ class RecorderStudioPanel extends LitElement {
         </div>
         ${!c.imported && !c.legacy_file_present ? html`<p class="muted">Nothing to import was found.</p>` : nothing}
       </div>
-      ${m ? html`<div class="card">
+      ${m ? html`<div class="card" id="mig-preview">
         <h2>Preview: ${m.source === "legacy" ? "gui_recorder.yaml" : "configuration.yaml"}</h2>
         <p><b>${fmtNum(m.import.excluded_count)}</b> excluded entities will be imported. This replaces the current Recorder Studio exclusion list.</p>
         ${m.import.warnings.length ? html`<ul class="warnings">${m.import.warnings.map((w) => html`<li>${icon("warn", 16)} ${w}</li>`)}</ul>` : nothing}

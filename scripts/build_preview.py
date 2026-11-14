@@ -49,6 +49,7 @@ if (q.get("open") === "all") el._open = new Set(el._data.tree.map((d) => d.devic
 if (q.get("search")) el._search = q.get("search");
 if (q.has("pending")) el._toggle(el._entities.slice(0, 4).map((e) => e.entity_id), false);
 if (q.get("dialog") === "purge-excluded") await el._askPurge("excluded");
+if (q.has("setup")) await el._setup();
 if (q.get("dialog") === "restart") el._askRestart();
 if (q.get("dialog") === "migrate") {{ await el._previewMigration("configuration"); }}
 document.getElementById("t").onclick = () => {{ const r = document.documentElement; r.dataset.theme = r.dataset.theme === "dark" ? "light" : "dark"; }};
