@@ -188,23 +188,32 @@ class RecorderStudioPanel extends LitElement {
   async _askPurge(kind, entityIds = [], label = "") {
     let impact = null;
     if (kind !== "retention") {
+      if (!this._summary) {
+        this._notify("Analyse the database first, so the impact of the purge can be shown.", "error");
+        return;
+      }
       impact = await this._run("preview", () => this._ws("preview_purge", { kind, entity_ids: entityIds }));
       if (!impact) return;
-      if (kind === "excluded" && impact.records === 0) {
-        this._notify("Nothing to purge: no records for excluded entities.");
+      if (impact.records === 0) {
+        this._notify("Nothing to purge: there are no records for the selected entities.");
         return;
       }
     }
     const keep = this._data.options.purge_keep_days;
+    const byId = new Map(this._entities.map((e) => [e.entity_id, e]));
+    const stillRecorded = entityIds.filter((id) => byId.get(id) && this._isRecorded(byId.get(id))).length;
+    const live = stillRecorded
+      ? ` ${stillRecorded === entityIds.length ? (entityIds.length === 1 ? "This entity is" : "These entities are") : `${stillRecorded} of them are`} still being recorded, so new history starts building up again right away.`
+      : "";
     const texts = {
       retention: [`Purge older than ${keep} days`, `All history older than ${keep} days is permanently deleted, for every entity.`],
       excluded: ["Purge excluded entities", "The full history of all currently excluded entities is permanently deleted, regardless of the retention setting."],
-      entities: [`Purge ${label || "entities"}`, "The full history of the selected entities is permanently deleted."],
+      entities: [`Purge ${label || "entities"}`, `The full history of ${entityIds.length === 1 ? "this entity" : `these ${entityIds.length} entities`} is permanently deleted, regardless of the retention setting.${live}`],
     }[kind];
     this._confirm({
       title: texts[0],
       body: texts[1],
-      impact: impact && `${fmtNum(impact.entities)} entities · ${fmtNum(impact.records)} records · ≈ ${fmtBytes(impact.approx_bytes)}`,
+      impact: impact && `${fmtNum(impact.entities)} ${impact.entities === 1 ? "entity" : "entities"} · ${fmtNum(impact.records)} records · ≈ ${fmtBytes(impact.approx_bytes)}`,
       confirmLabel: "Purge permanently",
       phrase: kind === "entities" && entityIds.length === 1 ? null : "PURGE",
       onConfirm: () =>
@@ -407,6 +416,7 @@ class RecorderStudioPanel extends LitElement {
 
   _device(dev, forceOpen) {
     const open = forceOpen || this._open.has(dev.device_id);
+    const full = this._data.tree.find((d) => d.device_id === dev.device_id) || dev; // unfiltered: purge never silently skips entities
     const ids = dev.entities.map((e) => e.entity_id);
     const rec = dev.entities.filter((e) => this._isRecorded(e)).length;
     const state = rec === ids.length ? "all" : rec === 0 ? "none" : "mixed";
@@ -414,6 +424,10 @@ class RecorderStudioPanel extends LitElement {
       <div class="dev-head" @click=${() => { const n = new Set(this._open); n.has(dev.device_id) ? n.delete(dev.device_id) : n.add(dev.device_id); this._open = n; }}>
         <span class=${classMap({ chev: true, open })}>${icon("chevron", 20)}</span>
         <div class="dev-name"><b>${dev.name}</b><small>${ids.length} entities · ${rec} recorded${dev.records ? ` · ${fmtNum(dev.records)} records (${fmtPct(dev.percent)} of database)` : ""}</small></div>
+        ${dev.device_id !== "__no_device__"
+          ? html`<button class="icon-btn" title=${full.records ? `Purge the history of all ${full.entities.length} entities of this device` : "No records to purge (analyse first)"} aria-label="Purge ${dev.name}" ?disabled=${this._ro || !full.records}
+              @click=${(e) => { e.stopPropagation(); this._askPurge("entities", full.entities.filter((x) => x.records).map((x) => x.entity_id), `device ${dev.name}`); }}>${icon("trash", 18)}</button>`
+          : nothing}
         <div class="sw-wrap" @click=${(e) => e.stopPropagation()}>
           ${this._switch(state, `Record all entities of ${dev.name}`, () => this._toggle(ids, state !== "all"))}
         </div>
@@ -429,7 +443,7 @@ class RecorderStudioPanel extends LitElement {
       <div class="ent-name"><span>${e.name}</span><code>${e.entity_id}</code></div>
       <span class="plat">${e.platform}</span>
       <span class="recs" title="Share of all records in the database">${e.records ? html`${fmtNum(e.records)} <b>${fmtPct(e.percent)}</b>` : "–"}</span>
-      <button class="icon-btn" title=${!rec && e.records ? "Purge history of this entity" : "Nothing to purge"} aria-label="Purge ${e.entity_id}" ?disabled=${this._ro || rec || !e.records} @click=${() => this._askPurge("entities", [e.entity_id], e.entity_id)}>${icon("trash", 18)}</button>
+      <button class="icon-btn" title=${e.records ? "Purge the history of this entity" : "No records to purge"} aria-label="Purge ${e.entity_id}" ?disabled=${this._ro || !e.records} @click=${() => this._askPurge("entities", [e.entity_id], e.entity_id)}>${icon("trash", 18)}</button>
       ${this._switch(rec ? "all" : "none", `Record ${e.entity_id}`, () => this._toggle([e.entity_id], !rec))}
     </li>`;
   }

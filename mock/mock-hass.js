@@ -50,7 +50,7 @@ export function createMockHass() {
   };
   const view = () => ({
     version: S.version, sqlite: S.sqlite, db_files: (() => { const t = all().reduce((a, e) => a + e.records, 0) * 118 + 12e6; return { db: Math.round(t * 0.93), wal: Math.round(t * 0.07), shm: 32768, total: Math.round(t * 0.93) + Math.round(t * 0.07) + 32768 }; })(), options: S.options, rules_text: S.rules_text, yaml_file: S.yaml_file, pending_restart: S.pending_restart, summary: summary(),
-    tree: (() => { const tot = all().reduce((a, e) => a + e.records, 0); const p = (n) => (S.analysed && tot ? +(n * 100 / tot).toFixed(2) : 0); return S.tree.map((d) => ({ ...d, entities: d.entities.map((e) => ({ ...e, records: S.analysed ? e.records : 0, percent: p(e.records) })), records: 0, percent: p(d.entities.reduce((a, e) => a + e.records, 0)), excluded_count: 0 })); })(),
+    tree: (() => { const tot = all().reduce((a, e) => a + e.records, 0); const p = (n) => (S.analysed && tot ? +(n * 100 / tot).toFixed(2) : 0); return S.tree.map((d) => ({ ...d, entities: d.entities.map((e) => ({ ...e, records: S.analysed ? e.records : 0, percent: p(e.records) })), records: S.analysed ? d.entities.reduce((a, e) => a + e.records, 0) : 0, percent: p(d.entities.reduce((a, e) => a + e.records, 0)), excluded_count: 0 })); })(),
     config: { state: S.configState, include_target: "gui_recorder.yaml", legacy_file_present: true, imported: S.configState === "inline" ? { excluded_entities: [] } : null },
   });
   const impact = (ids) => { const m = new Set(ids); const r = all().filter((e) => m.has(e.entity_id)).reduce((a, e) => a + e.records, 0); return { entities: ids.length, records: r, approx_bytes: r * 118 }; };

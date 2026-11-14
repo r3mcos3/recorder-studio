@@ -24,8 +24,8 @@ history that is no longer wanted.
   unused space a repack would return to the disk.
 - **Search and filter.** Search by entity id, name, device or platform; filter by domain or status (recorded, excluded,
   excluded but still has history); sort by name or by share of the database.
-- **Safe maintenance.** Purge by retention, purge the history of excluded entities, purge a single entity, repack the
-  database, restart Home Assistant. Every destructive action shows its estimated impact and asks for confirmation;
+- **Safe maintenance.** Purge by retention, purge the history of excluded entities, purge a single entity or a whole
+  device, repack the database, restart Home Assistant. Every destructive action shows its estimated impact and asks for confirmation;
   bulk purges require typing `PURGE`.
 - **Orphaned exclusions.** Finds excluded entities that no longer exist and have no history, with a one-click clean-up.
 - **Guided migration.** Imports an existing `recorder:` block from `configuration.yaml` (or the output of GUI Recorder)
@@ -74,7 +74,7 @@ continue with step 3 above.
 | Tab | What it does |
 | --- | --- |
 | **Overview** | Total / current / obsolete records, database size split into file / WAL / SHM, records per entity with percentage, composition chart, size per table and reclaimable space. *Obsolete* means records that still exist for entities that are now excluded. |
-| **Entities** | Device tree with a recording toggle per device and per entity, records and share per row, search, filters and sorting. Changes stay pending until you press **Save changes** (a bar at the bottom shows how many). A trash button purges the history of one excluded entity. |
+| **Entities** | Device tree with a recording toggle per device and per entity, records and share per row, search, filters and sorting. Changes stay pending until you press **Save changes** (a bar at the bottom shows how many). A trash button on every entity and every device purges its history (after an analysis, so the impact can be shown). |
 | **Maintenance** | Purge by retention, purge excluded entities, repack, restart Home Assistant. |
 | **Orphans** | Excluded entities that no longer exist anywhere and have no history. Remove them in bulk; nothing is deleted from the database. |
 | **Migration** | Import an existing recorder config and activate the include in `configuration.yaml`. |
@@ -107,6 +107,9 @@ Only `exclude.{domains,entity_globs,event_types}` and `include.{domains,entity_g
 > **Purges are permanent and cannot be undone. Make a full Home Assistant backup first.**
 
 - **Purge by retention** calls `recorder.purge` with your `purge_keep_days` and deletes everything older.
+- **Purge one entity or a device** (trash buttons on the Entities tab) calls `recorder.purge_entities` with
+  `keep_days: 0` for exactly the entities shown in the dialog. A device purge always covers all entities of that device,
+  even when a search filter is active. If some of them are still recorded, the dialog says so.
 - **Purge excluded entities** calls `recorder.purge_entities` with `keep_days: 0` for all currently excluded
   entities, ignoring retention. The dialog shows the entities, records and approximate size first.
 - **Repack** calls `recorder.purge` with `repack: true` (so retention is applied too). It needs free disk space of
@@ -178,7 +181,8 @@ two comment lines) into an inline `recorder:` block and remove the include.
 ## Limitations
 
 - SQLite only.
-- Purging works per entity, for all excluded entities, or by retention. There is no per-device purge button.
+- Purging works per entity, per device, for all excluded entities, or by retention. It needs a recent analysis, because
+  the confirmation dialog shows the impact first. Entities without a device cannot be purged as a group.
 - Recording changes need a Home Assistant restart.
 - The per-table sizes need SQLite's `dbstat` module; if your SQLite build lacks it, that card is simply hidden.
 - Re-enabling recording for an entity that one of your manual domain/glob rules excludes is not supported; remove or

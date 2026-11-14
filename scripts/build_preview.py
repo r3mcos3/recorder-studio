@@ -50,6 +50,8 @@ if (q.get("search")) el._search = q.get("search");
 if (q.has("pending")) el._toggle(el._entities.slice(0, 4).map((e) => e.entity_id), false);
 if (q.get("dialog") === "purge-excluded") await el._askPurge("excluded");
 if (q.has("setup")) await el._setup();
+if (q.get("dialog") === "purge-device") await el._askPurge("entities", el._data.tree[0].entities.filter((x) => x.records).map((x) => x.entity_id), `device ${{el._data.tree[0].name}}`);
+if (q.get("dialog") === "purge-entity") await el._askPurge("entities", [el._data.tree[1].entities[0].entity_id], el._data.tree[1].entities[0].entity_id);
 if (q.get("dialog") === "restart") el._askRestart();
 if (q.get("dialog") === "migrate") {{ await el._previewMigration("configuration"); }}
 document.getElementById("t").onclick = () => {{ const r = document.documentElement; r.dataset.theme = r.dataset.theme === "dark" ? "light" : "dark"; }};
