@@ -19,6 +19,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
       - name: Create release for a new version
         env:
           GH_TOKEN: ${{ github.token }}
@@ -28,4 +29,6 @@ jobs:
           if gh release view "$tag" >/dev/null 2>&1; then
             echo "Release $tag already exists"; exit 0
           fi
-          gh release create "$tag" --target "${{ github.event.workflow_run.head_sha }}" --title "Recorder Studio ${version}" --generate-notes
+          ref_name="$tag" .github/scripts/release_notes.sh "${{ github.event.workflow_run.head_sha }}" > notes.md
+          cat notes.md
+          gh release create "$tag" --target "${{ github.event.workflow_run.head_sha }}" --title "Recorder Studio ${version}" --notes-file notes.md

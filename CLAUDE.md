@@ -83,7 +83,9 @@ python3 scripts/build_preview.py      # rebuild preview/preview.html
 - **Release policy (keep releases frequent, do not let a gap build up):** Marketplace/HACS users get the latest *release*, not
   `main`, so unreleased fixes do not reach anyone. After every user-facing fix or feature (changes under
   `custom_components/`), bump `version` in `manifest.json` (patch for fixes, minor for features) and push. The
-  `Release` workflow then creates the GitHub release by itself once `Validate` is green, with generated notes. Docs-only
+  `Release` workflow then creates the GitHub release by itself once `Validate` is green. Its notes are built from the
+  commit subjects (`.github/scripts/release_notes.sh`: ✨ New, 🐛 Fixes, other), so write meaningful commit subjects;
+  `--generate-notes` is not used because we commit to main without pull requests. Docs-only
   or CI-only commits need no release. Before finishing a work session, check `git log vX.Y.Z..main` and release if
   user-facing changes are waiting.
 - README: keep the troubleshooting table, limitations and tab descriptions in sync with the code. Screenshots in
