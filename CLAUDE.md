@@ -7,7 +7,8 @@ Guidance for AI agents working on this repository. Read `README.md` first for th
 **Recorder Studio** (`recorder_studio`) is a Home Assistant custom integration: a sidebar panel to control what the
 `recorder` stores (per device / per entity), see what fills the SQLite database, and purge or repack it safely. It is an
 independent re-implementation inspired by GUI Recorder (MIT); no code was copied. Public repo, MIT license, installed
-through HACS (custom repository, and a pull request to the HACS default list is pending).
+through the Home Assistant Marketplace (HA 2026.11+, it replaced HACS) or HACS (custom repository; a pull request to
+the default catalog is pending).
 
 **SQLite only.** The config flow refuses other backends. MariaDB/PostgreSQL support is a known, parked idea (see
 "Ideas parked" below); do not build it unless asked.
@@ -79,7 +80,7 @@ python3 scripts/build_preview.py      # rebuild preview/preview.html
   the mock preview, then deploy to the user's HA only when they ask.
 - The version lives ONLY in `manifest.json`; `const.VERSION` reads it from there (panel header, About card and JS cache-busting use it). Never hardcode it.
 - `manifest.json` keys must stay in hassfest order (domain, name, then alphabetical). Bump `version` for a release.
-- **Release policy (keep releases frequent, do not let a gap build up):** HACS users get the latest *release*, not
+- **Release policy (keep releases frequent, do not let a gap build up):** Marketplace/HACS users get the latest *release*, not
   `main`, so unreleased fixes do not reach anyone. After every user-facing fix or feature (changes under
   `custom_components/`), bump `version` in `manifest.json` (patch for fixes, minor for features) and push. The
   `Release` workflow then creates the GitHub release by itself once `Validate` is green, with generated notes. Docs-only
@@ -99,7 +100,9 @@ python3 scripts/build_preview.py      # rebuild preview/preview.html
 
 ## Open items and ideas parked
 
-- HACS default list: pull request `hacs/default#14173` is waiting for review. Do not request a review (they close it).
+- Catalog (default list of the Marketplace/HACS): pull request `hacs/default#14173` is waiting for review (new additions
+  take months). Do not request a review (they close the PR). The README button uses the `marketplace_repository`
+  my-link; the old `hacs_repository` link also still works.
 - Parked, not to be built unprompted: MariaDB/PostgreSQL support. Plan: use the recorder's own SQLAlchemy session
   (no `db_url` parsing), generic `states JOIN states_meta GROUP BY` counts, sizes via `information_schema.TABLES`
   (MariaDB) or `pg_database_size`/`pg_total_relation_size` (PostgreSQL), label as experimental, test the SQL in GitHub
