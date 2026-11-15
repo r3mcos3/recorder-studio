@@ -1,6 +1,9 @@
 {
   "domain": "recorder_studio",
   "name": "Recorder Studio",
+  "after_dependencies": [
+    "backup"
+  ],
   "codeowners": [
     "@r3mcos3"
   ],
