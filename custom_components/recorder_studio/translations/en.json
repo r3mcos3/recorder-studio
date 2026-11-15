@@ -1,6 +1,27 @@
 {
   "config": {
-    "step": {"user": {"title": "Recorder Studio", "description": "Adds a sidebar panel to manage the recorder (SQLite only)."}},
-    "abort": {"single_instance_allowed": "Recorder Studio is already set up."}
+    "step": {
+      "user": {
+        "title": "Recorder Studio",
+        "description": "Adds a sidebar panel to manage the recorder (SQLite only)."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Recorder Studio is already set up."
+    }
+  },
+  "issues": {
+    "disk_low": {
+      "title": "Disk space is running low",
+      "description": "Only {free} ({percent}%) is left on the disk that holds the Home Assistant database ({database}). Free up space, for example by excluding noisy entities or lowering the retention in Recorder Studio, then repack the database."
+    },
+    "disk_filling": {
+      "title": "The database is filling the disk",
+      "description": "At the current growth the disk (free: {free}, database: {database}) is full in about {days} days. Exclude noisy entities in Recorder Studio or lower the retention."
+    },
+    "db_growth": {
+      "title": "The database is growing fast",
+      "description": "The recorder database grew {percent}% in the last week (now {database}). Open Recorder Studio to see which entities add the most."
+    }
   }
 }

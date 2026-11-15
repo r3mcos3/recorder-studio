@@ -55,6 +55,7 @@ def async_register(hass: HomeAssistant) -> None:
     for cmd in (
         ws_get_state, ws_set_recorded, ws_save_settings, ws_analyze, ws_preview_purge, ws_purge,
         ws_repack, ws_restart, ws_remove_orphans, ws_migration_sources, ws_migration_preview, ws_migration_import, ws_migration_activate,
+        ws_save_alerts, ws_dismiss_suggestions, ws_backup_status,
     ):
         websocket_api.async_register_command(hass, cmd)
 
@@ -75,6 +76,9 @@ async def ws_get_state(hass, connection, msg):
             "rules_text": d["rules_text"],
             "tree": service.build_tree(hass),
             "summary": _summary(hass),
+            "suggestions": service.build_suggestions(hass),
+            "growth": await service.async_growth(hass),
+            "alerts": {**d["alerts"], "active": hass.data[DOMAIN].get("active_alerts", [])},
             "config": await _config_info(hass),
             "pending_restart": hass.data[DOMAIN].get("pending_restart", False),
             "yaml_file": GENERATED_FILE,
@@ -229,6 +233,49 @@ async def ws_remove_orphans(hass, connection, msg):
     d["rescued_entities"] = sorted(set(d["rescued_entities"]) - orphans)
     await service.async_persist(hass)
     connection.send_result(msg["id"], {"removed": len(orphans), "summary": _summary(hass)})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): T + "save_alerts",
+        vol.Required("enabled"): bool,
+        vol.Required("free_percent"): vol.All(vol.Coerce(int), vol.Range(min=1, max=90)),
+        vol.Required("growth_percent"): vol.All(vol.Coerce(int), vol.Range(min=5, max=1000)),
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_save_alerts(hass, connection, msg):
+    if READ_ONLY_MODE:
+        connection.send_error(msg["id"], "read_only", "Recorder Studio is in read-only mode: write actions are disabled.")
+        return
+    d = _d(hass)
+    d["alerts"] = {"enabled": msg["enabled"], "free_percent": msg["free_percent"], "growth_percent": msg["growth_percent"]}
+    await async_save(hass)
+    await service.async_check_alerts(hass)  # applies immediately, no restart needed
+    connection.send_result(msg["id"], {"active": hass.data[DOMAIN].get("active_alerts", [])})
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): T + "dismiss_suggestions", vol.Optional("entity_ids", default=[]): [str], vol.Optional("reset", default=False): bool}
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_dismiss_suggestions(hass, connection, msg):
+    if READ_ONLY_MODE:
+        connection.send_error(msg["id"], "read_only", "Recorder Studio is in read-only mode: write actions are disabled.")
+        return
+    d = _d(hass)
+    d["dismissed"] = [] if msg["reset"] else sorted(set(d["dismissed"]) | {e.strip() for e in msg["entity_ids"] if e.strip()})
+    await async_save(hass)
+    connection.send_result(msg["id"], {"suggestions": service.build_suggestions(hass)})
+
+
+@websocket_api.websocket_command({vol.Required("type"): T + "backup_status"})
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_backup_status(hass, connection, msg):
+    connection.send_result(msg["id"], await service.async_backup_status(hass))
 
 
 # ---- migration -------------------------------------------------------------
