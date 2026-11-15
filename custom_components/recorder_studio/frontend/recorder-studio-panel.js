@@ -635,6 +635,10 @@ class RecorderStudioPanel extends LitElement {
       <textarea rows="7" spellcheck="false" placeholder="exclude:\n  entity_globs:\n    - sensor.*_uptime" .value=${f.rules_text} @input=${(e) => set("rules_text", e.target.value)}></textarea>
       <div class="row"><button class="btn primary" ?disabled=${this._ro || !dirty || !!this._busy} @click=${() => this._run("save", async () => { await this._ws("save_settings", { ...f }); await this._refresh(); }, { success: "Settings saved. Restart to apply." })}>Save settings</button>
       <button class="btn" ?disabled=${!dirty} @click=${() => (this._form = { ...this._data.options, rules_text: this._data.rules_text })}>Reset</button></div>
+    </div>
+    <div class="card">
+      <h3>About</h3>
+      <p class="hint">Recorder Studio <b>v${this._data.version}</b> · SQLite · <a href="https://github.com/r3mcos3/recorder-studio/releases" target="_blank" rel="noopener">Release notes</a> · <a href="https://github.com/r3mcos3/recorder-studio/issues" target="_blank" rel="noopener">Report an issue</a></p>
     </div>`;
   }
 

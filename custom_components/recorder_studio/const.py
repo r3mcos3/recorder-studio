@@ -1,5 +1,18 @@
+import json
+from pathlib import Path
+
 DOMAIN = "recorder_studio"
-VERSION = "0.1.0"
+
+
+def _manifest_version() -> str:
+    """Single source of truth for the version: manifest.json (bumped on every release)."""
+    try:
+        return json.loads((Path(__file__).parent / "manifest.json").read_text(encoding="utf-8"))["version"]
+    except (OSError, ValueError, KeyError):
+        return "unknown"
+
+
+VERSION = _manifest_version()
 STORAGE_VERSION = 1
 STORAGE_KEY = f"{DOMAIN}.data"
 

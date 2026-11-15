@@ -77,6 +77,7 @@ python3 scripts/build_preview.py      # rebuild preview/preview.html
   panel or mock changes.
 - **Never run purge or migration tests against a real database.** There is no HA test instance; verify with pytest and
   the mock preview, then deploy to the user's HA only when they ask.
+- The version lives ONLY in `manifest.json`; `const.VERSION` reads it from there (panel header, About card and JS cache-busting use it). Never hardcode it.
 - `manifest.json` keys must stay in hassfest order (domain, name, then alphabetical). Bump `version` for a release.
 - **Release policy (keep releases frequent, do not let a gap build up):** HACS users get the latest *release*, not
   `main`, so unreleased fixes do not reach anyone. After every user-facing fix or feature (changes under

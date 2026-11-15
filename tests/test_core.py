@@ -312,3 +312,12 @@ def test_light_analysis_skips_expensive_parts(synthetic_db):
     full = db_stats.analyze(synthetic_db)
     assert light["entity_counts"] == full["entity_counts"]
     assert light["tables"] is None and light["free_bytes"] is None
+
+
+def test_version_constant_matches_manifest():
+    import importlib.util, json, pathlib
+    base = pathlib.Path(__file__).parent.parent / "custom_components" / "recorder_studio"
+    spec = importlib.util.spec_from_file_location("rs_const", base / "const.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    assert mod.VERSION == json.loads((base / "manifest.json").read_text())["version"]
