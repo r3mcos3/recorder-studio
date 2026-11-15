@@ -305,3 +305,10 @@ def test_tiny_share_is_not_rounded_to_zero():
     ents = [{"entity_id": "sensor.a", "device_id": None}]
     t = tree.build_tree([], ents, set(), {"sensor.a": 120}, 621803)
     assert 0 < t[0]["entities"][0]["percent"] < 0.1
+
+
+def test_light_analysis_skips_expensive_parts(synthetic_db):
+    light = db_stats.analyze(synthetic_db, full=False)
+    full = db_stats.analyze(synthetic_db)
+    assert light["entity_counts"] == full["entity_counts"]
+    assert light["tables"] is None and light["free_bytes"] is None

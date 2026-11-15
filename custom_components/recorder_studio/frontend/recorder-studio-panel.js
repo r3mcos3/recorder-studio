@@ -83,13 +83,60 @@ class RecorderStudioPanel extends LitElement {
     this._form = null;
     this._migration = null;
     this._started = false;
+    this._lastFull = 0;
   }
 
   updated(changed) {
     if (changed.has("hass") && this.hass && !this._started) {
       this._started = true;
-      this._refresh();
+      this._start();
     }
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this._stopped = true;
+    clearTimeout(this._liveTimer);
+  }
+
+  connectedCallback() {
+    super.connectedCallback();
+    if (this._started && this._stopped) {
+      this._stopped = false;
+      this._live();
+    }
+  }
+
+  async _start() {
+    await this._refresh();
+    this._live();
+  }
+
+  /**
+   * Keeps the data live: every cycle runs a cheap analysis (record counts) and reloads the state; the expensive
+   * per-table sizes are refreshed every 10 minutes. It pauses while the tab is hidden, while an action is running or
+   * a dialog is open, and slows down by itself when an analysis takes long.
+   */
+  async _live() {
+    clearTimeout(this._liveTimer);
+    if (this._stopped) return;
+    let delay = 30000;
+    const idle = document.visibilityState === "visible" && !this._busy && !this._dialog;
+    if (idle && this._data?.sqlite !== false) {
+      const t0 = Date.now();
+      try {
+        const needFull = Date.now() - this._lastFull > 600000;
+        await this._ws("analyze", { light: !needFull });
+        if (needFull) this._lastFull = Date.now();
+        await this._refresh({ silent: true });
+      } catch (err) {
+        /* transient (restart, reconnect): try again next cycle */
+      }
+      delay = Math.max(30000, (Date.now() - t0) * 10);
+    } else if (idle) {
+      await this._refresh({ silent: true });
+    }
+    this._liveTimer = setTimeout(() => this._live(), delay);
   }
 
   /* ---------- data ---------- */
@@ -97,15 +144,18 @@ class RecorderStudioPanel extends LitElement {
     return this.hass.connection.sendMessagePromise({ type: `recorder_studio/${type}`, ...payload });
   }
 
-  async _refresh() {
-    this._loading = true;
+  async _refresh({ silent = false } = {}) {
+    if (!silent) this._loading = true;
     try {
       this._data = await this._ws("get_state");
       this._error = null;
-      const o = this._data.options;
-      this._form = { ...o, rules_text: this._data.rules_text };
+      if (!silent || !this._form) {
+        // a silent (background) refresh must not overwrite what the user is typing in Settings
+        const o = this._data.options;
+        this._form = { ...o, rules_text: this._data.rules_text };
+      }
     } catch (err) {
-      this._error = err?.message || String(err);
+      if (!silent) this._error = err?.message || String(err);
     }
     this._loading = false;
   }
@@ -174,6 +224,7 @@ class RecorderStudioPanel extends LitElement {
       "analyze",
       async () => {
         await this._ws("analyze");
+        this._lastFull = Date.now();
         await this._refresh();
       },
       { success: "Database analysed." }
@@ -194,8 +245,8 @@ class RecorderStudioPanel extends LitElement {
     while (Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, wait));
       wait = 5000;
-      await this._ws("analyze");
-      await this._refresh();
+      await this._ws("analyze", { light: true });
+      await this._refresh({ silent: true });
       const now = this._summary?.total_records ?? null;
       if (expected > 0 && start !== null && now !== null && start - now >= expected * 0.98) return true;
       if (expected === 0 && changed && now === last) return true;
@@ -249,7 +300,7 @@ class RecorderStudioPanel extends LitElement {
             this._notify("Purge queued. The statistics refresh automatically when it has finished…");
             return this._followUp(impact?.records || 0);
           },
-          { success: (done) => (done ? "Purge finished. The statistics are up to date." : "The purge is still running. Click Re-analyse in a minute to see the result.") }
+          { success: (done) => (done ? "Purge finished. The statistics are up to date." : "The purge is still running. The statistics update by themselves.") }
         ),
     });
   }
@@ -289,7 +340,6 @@ class RecorderStudioPanel extends LitElement {
         </div>
         ${d.db_files?.total ? html`<span class="chip-size" title="Database file + WAL + SHM">${icon("database", 16)} ${fmtBytes(d.db_files.total)}</span>` : nothing}
         <div class="grow"></div>
-        <button class="btn ghost" @click=${this._refresh} ?disabled=${this._loading}>${icon("refresh", 18)} Refresh</button>
       </header>
 
       ${d.read_only ? html`<div class="banner info">${icon("check")}<span><b>Read-only mode.</b> Statistics and the entity list work; saving, purging, repacking, restarting and migration are disabled.</span></div>` : nothing}

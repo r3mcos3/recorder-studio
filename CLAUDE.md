@@ -48,7 +48,10 @@ docs/images/           README screenshots (real screenshots, cropped to the pane
 - `const.READ_ONLY_MODE` (False) refuses all write actions when set to True.
 - Migration never imports `!secret`/YAML-tag values as plain text and only emits rescued entities when a domain/glob
   filter makes `include.entities` meaningful.
-- Statistics are never refreshed automatically; the user clicks *Analyse database* (it reads every page for `dbstat`).
+- Data is **live**: the panel's `_live()` loop runs a light `analyze` (record counts only, `light: true`) every 30 s (slower
+  if an analysis takes long) and a full one (with `dbstat` table sizes, which read every page) every 10 minutes. It pauses
+  while the tab is hidden, an action runs or a dialog is open. Background refreshes are `silent` so they never overwrite
+  Settings the user is typing. There is no manual Refresh button; keep it that way.
 
 ## Gotchas learned the hard way
 

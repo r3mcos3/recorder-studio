@@ -67,8 +67,12 @@ def free_bytes(conn: sqlite3.Connection) -> int:
         return 0
 
 
-def analyze(db_path: Path) -> dict[str, Any]:
-    """Per-entity state counts. Opens the database strictly read-only."""
+def analyze(db_path: Path, full: bool = True) -> dict[str, Any]:
+    """Per-entity state counts. Opens the database strictly read-only.
+
+    `full=False` skips the per-table sizes and free space (they read every page of the file), so it is cheap enough
+    to run repeatedly; the caller keeps the previous values for those.
+    """
     if not db_path.exists():
         raise FileNotFoundError(f"Database not found: {db_path}")
     conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
@@ -83,8 +87,8 @@ def analyze(db_path: Path) -> dict[str, Any]:
         else:
             sql = "SELECT entity_id, COUNT(*) FROM states GROUP BY entity_id ORDER BY 2 DESC"
         counts = {e: c for e, c in conn.execute(sql) if e}
-        tables = table_sizes(conn)
-        free = free_bytes(conn)
+        tables = table_sizes(conn) if full else None
+        free = free_bytes(conn) if full else None
     finally:
         conn.close()
     return {

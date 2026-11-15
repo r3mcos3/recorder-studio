@@ -61,8 +61,9 @@ continue with step 3 above.
 
 ## First steps
 
-1. **Analyse the database.** On the Overview tab click *Analyse database*. This is read-only and may take a moment
-   on a large database (the per-table sizes read every page of the file). The total size is visible without it. Statistics are never refreshed automatically; click *Re-analyse* after changes.
+1. **Open the panel.** The data is live: the panel analyses the database by itself when it opens and then keeps
+   the record counts and sizes up to date in the background (read-only). The per-table sizes read every page of the
+   file, so they are refreshed every 10 minutes; *Re-analyse* on the Overview tab forces a full refresh.
 2. **Check the situation.** The Migration tab tells you whether `configuration.yaml` already includes
    `recorder_studio.yaml`. If not, a blue banner offers a *Set up* shortcut.
 3. **Migrate** once (see [Migration](#migration)).
@@ -74,7 +75,7 @@ continue with step 3 above.
 | Tab | What it does |
 | --- | --- |
 | **Overview** | Total / current / obsolete records, database size split into file / WAL / SHM, records per entity with percentage, composition chart, size per table and reclaimable space. *Obsolete* means records that still exist for entities that are now excluded. |
-| **Entities** | Device tree with a recording toggle per device and per entity, records and share per row, search, filters and sorting. Changes stay pending until you press **Save changes** (a bar at the bottom shows how many). A trash button on every entity and every device purges its history (after an analysis, so the impact can be shown). |
+| **Entities** | Device tree with a recording toggle per device and per entity, records and share per row, search, filters and sorting. Changes stay pending until you press **Save changes** (a bar at the bottom shows how many). A trash button on every entity and every device purges its history (the impact is shown first). |
 | **Maintenance** | Purge by retention, purge excluded entities, repack, restart Home Assistant. |
 | **Orphans** | Excluded entities that no longer exist anywhere and have no history. Remove them in bulk; nothing is deleted from the database. |
 | **Migration** | Import an existing recorder config and activate the include in `configuration.yaml`. |
@@ -117,7 +118,7 @@ Only `exclude.{domains,entity_globs,event_types}` and `include.{domains,entity_g
 - **Restart Home Assistant** is needed to apply recorder configuration changes. Home Assistant validates the
   configuration first and refuses to restart on errors.
 
-Purges are queued by the recorder. After a purge the panel re-analyses the database by itself (a few times, until the numbers stop changing), so the statistics are live without a manual *Re-analyse*.
+Purges are queued by the recorder. After a purge the panel keeps re-analysing until the records are gone, and the live updates take over after that.
 
 ## How it works
 
@@ -175,7 +176,7 @@ two comment lines) into an inline `recorder:` block and remove the include.
 | Log says "supports SQLite only" | The recorder uses another database backend; this integration cannot be used. |
 | Panel or icon looks outdated | Hard-refresh the browser. After updating the files, restart Home Assistant. |
 | Banner says the file is not active | `configuration.yaml` does not include `recorder_studio.yaml`; use *Set up* on the Migration tab. |
-| Statistics are empty | Click *Analyse database*; it is never run automatically. |
+| Statistics are empty or old | The panel updates them every 30 seconds while it is open and visible. A first analysis on a very large database can take a moment; *Re-analyse* forces it. |
 | Changes have no effect | The recorder reads its configuration at startup. Restart Home Assistant. |
 
 ## Limitations

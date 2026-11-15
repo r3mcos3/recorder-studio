@@ -54,14 +54,22 @@ async def async_persist(hass: HomeAssistant) -> None:
     hass.data[DOMAIN]["pending_restart"] = True
 
 
-async def async_analyze(hass: HomeAssistant) -> dict[str, Any]:
+async def async_analyze(hass: HomeAssistant, full: bool = True) -> dict[str, Any]:
     path = db_path(hass)
+    previous = _data(hass).get("stats") or {}
     try:
-        stats = await hass.async_add_executor_job(db_stats.analyze, path)
+        stats = await hass.async_add_executor_job(db_stats.analyze, path, full)
+        if not full:  # light run: keep the expensive numbers from the last full analysis
+            stats["tables"] = previous.get("tables", [])
+            stats["free_bytes"] = previous.get("free_bytes") or 0
+            stats["full_at"] = previous.get("full_at")
+        else:
+            stats["full_at"] = stats["generated_at"]
     except Exception as err:  # noqa: BLE001
         stats = {"entity_counts": {}, "total_records": 0, "db_path": str(path), "db_size_bytes": 0, "generated_at": None, "error": str(err)}
     _data(hass)["stats"] = stats
-    await async_save(hass)
+    if full:  # light runs happen every few seconds; do not rewrite the storage file each time
+        await async_save(hass)
     return stats
 
 

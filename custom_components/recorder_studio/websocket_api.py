@@ -132,11 +132,11 @@ async def ws_save_settings(hass, connection, msg):
     connection.send_result(msg["id"], {"ok": True})
 
 
-@websocket_api.websocket_command({vol.Required("type"): T + "analyze"})
+@websocket_api.websocket_command({vol.Required("type"): T + "analyze", vol.Optional("light", default=False): bool})
 @websocket_api.require_admin
 @websocket_api.async_response
 async def ws_analyze(hass, connection, msg):
-    await service.async_analyze(hass)
+    await service.async_analyze(hass, full=not msg["light"])
     connection.send_result(msg["id"], {"summary": _summary(hass), "tree": service.build_tree(hass)})
 
 
