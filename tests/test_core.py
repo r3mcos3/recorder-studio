@@ -321,3 +321,78 @@ def test_version_constant_matches_manifest():
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     assert mod.VERSION == json.loads((base / "manifest.json").read_text())["version"]
+
+
+# ---- more migration sources -------------------------------------------------
+
+def _write(path, text):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
+
+CONFIG_INLINE = "homeassistant:\n  name: x\nrecorder:\n  exclude:\n    entities:\n      - sensor.a\n      - sensor.b\n"
+
+
+def test_recorder_mapping_variants():
+    assert migration.recorder_mapping("recorder:\n  exclude:\n    entities: [sensor.a]\n")["exclude"]["entities"] == ["sensor.a"]
+    assert migration.recorder_mapping("exclude:\n  entities: [sensor.a]\nauto_purge: true\n")["exclude"]
+    pkg = "homeassistant:\n  packages:\n    rec:\n      recorder:\n        exclude:\n          domains: [update]\n"
+    assert migration.recorder_mapping(pkg)["exclude"]["domains"] == ["update"]
+    assert migration.recorder_mapping("sensor:\n  - platform: x\n") is None
+    assert migration.recorder_mapping("name: hello\nexclude: 1\n") is None  # unrelated keys: not recorder config
+    assert migration.recorder_mapping("::: not yaml [") is None
+
+
+def test_parse_text_rejects_non_recorder_text():
+    with pytest.raises(ValueError):
+        migration.parse_text("light:\n  - platform: x\n")
+    assert migration.parse_text("exclude:\n  entities: [sensor.x]\n")["excluded_entities"] == ["sensor.x"]
+
+
+def test_discover_sources(tmp_path):
+    _write(tmp_path / "gui_recorder.yaml", "exclude:\n  entities: [sensor.a, sensor.b, sensor.c]\n")
+    _write(tmp_path / "packages" / "rec.yaml", "recorder:\n  exclude:\n    entities: [sensor.p]\n")
+    _write(tmp_path / "packages" / "unrelated.yaml", "sensor:\n  - platform: template\n")
+    _write(tmp_path / "recorder_studio.yaml", "exclude:\n  entities: [sensor.own]\n")  # our own file is never a source
+    _write(tmp_path / "secrets.yaml", "recorder: {exclude: {entities: [sensor.secret]}}\n")
+    _write(tmp_path / "custom_components" / "x" / "services.yaml", "recorder:\n  exclude:\n    entities: [sensor.hidden]\n")
+    _write(tmp_path / ".storage" / "foo.yaml", "recorder:\n  exclude:\n    entities: [sensor.hidden]\n")
+    _write(tmp_path / "big.yaml", "recorder:\n  exclude:\n    entities: [sensor.big]\n" + "# x\n" * 400_000)
+    found = migration.discover_sources(tmp_path, "recorder_studio.yaml", CONFIG_INLINE)
+    ids = [s["id"] for s in found]
+    assert ids == ["configuration", "legacy", "file:packages/rec.yaml"]
+    by_id = {s["id"]: s for s in found}
+    assert by_id["configuration"]["excluded"] == 2 and by_id["legacy"]["excluded"] == 3
+    assert "remove its recorder: section" in by_id["file:packages/rec.yaml"]["note"]
+
+
+def test_discover_marks_included_file_first(tmp_path):
+    _write(tmp_path / "rec_old.yaml", "exclude:\n  entities: [sensor.a]\n")
+    _write(tmp_path / "gui_recorder.yaml", "exclude:\n  entities: [sensor.a]\n")
+    found = migration.discover_sources(tmp_path, "recorder_studio.yaml", "recorder: !include rec_old.yaml\n")
+    assert [s["kind"] for s in found] == ["included", "legacy"]
+
+
+def test_safe_config_path(tmp_path):
+    _write(tmp_path / "ok.yaml", "recorder: {}\n")
+    _write(tmp_path / "note.txt", "x")
+    assert migration.safe_config_path(tmp_path, "ok.yaml").name == "ok.yaml"
+    for bad in ("../etc/passwd.yaml", "/etc/hosts.yaml", "sub/../../x.yaml", "note.txt", "missing.yaml", ""):
+        with pytest.raises(ValueError):
+            migration.safe_config_path(tmp_path, bad)
+    outside = tmp_path.parent / "outside.yaml"
+    outside.write_text("recorder: {}\n")
+    (tmp_path / "link.yaml").symlink_to(outside)
+    with pytest.raises(ValueError):
+        migration.safe_config_path(tmp_path, "link.yaml")
+
+
+def test_merge_import_unites_entities_and_keeps_rules():
+    existing = {"options": {"purge_keep_days": 10}, "excluded_entities": ["sensor.a"], "rescued_entities": [], "rules_text": "exclude:\n  domains:\n    - update\n"}
+    imported = {"options": {"purge_keep_days": 5}, "excluded_entities": ["sensor.b", "sensor.a"], "rescued_entities": ["sensor.r"], "rules_text": "exclude:\n  domains:\n    - sun\n", "warnings": []}
+    merged, warnings = migration.merge_import(existing, imported)
+    assert merged["excluded_entities"] == ["sensor.a", "sensor.b"] and merged["rescued_entities"] == ["sensor.r"]
+    assert merged["options"]["purge_keep_days"] == 5
+    assert "update" in merged["rules_text"] and warnings
+    merged2, w2 = migration.merge_import({**existing, "rules_text": ""}, imported)
+    assert "sun" in merged2["rules_text"] and not w2

@@ -54,7 +54,7 @@ def _need_stats(hass: HomeAssistant) -> dict[str, Any]:
 def async_register(hass: HomeAssistant) -> None:
     for cmd in (
         ws_get_state, ws_set_recorded, ws_save_settings, ws_analyze, ws_preview_purge, ws_purge,
-        ws_repack, ws_restart, ws_remove_orphans, ws_migration_preview, ws_migration_import, ws_migration_activate,
+        ws_repack, ws_restart, ws_remove_orphans, ws_migration_sources, ws_migration_preview, ws_migration_import, ws_migration_activate,
     ):
         websocket_api.async_register_command(hass, cmd)
 
@@ -232,55 +232,107 @@ async def ws_remove_orphans(hass, connection, msg):
 
 
 # ---- migration -------------------------------------------------------------
-_SOURCE = {vol.Required("source"): vol.In(["configuration", "legacy"])}
+_SOURCE = {
+    vol.Required("source"): vol.All(str, vol.Match(r"^(configuration|legacy|paste|file:.{1,200})$")),
+    vol.Optional("text"): vol.All(str, vol.Length(max=200_000)),
+}
 
 
-async def _load_import(hass: HomeAssistant, source: str) -> dict[str, Any] | None:
-    if source == "legacy":
-        text = await hass.async_add_executor_job(_read, Path(hass.config.path(LEGACY_FILE)))
-        return migration.read_legacy_file(text) if text is not None else None
-    return (await _config_info(hass)).get("imported")
+def _load_source(config_dir: Path, source: str, text: str | None, config_text: str) -> tuple[dict[str, Any] | None, str]:
+    """Return (parsed import, label) for one migration source. Raises ValueError for bad input."""
+    if source == "configuration":
+        return migration.inspect_configuration(config_text, GENERATED_FILE).get("imported"), CONFIG_FILE
+    if source == "paste":
+        return migration.parse_text(text or ""), "pasted YAML"
+    rel = LEGACY_FILE if source == "legacy" else source[len("file:"):]
+    path = migration.safe_config_path(config_dir, rel)
+    return migration.parse_text(path.read_text(encoding="utf-8")), rel
+
+
+async def _load_import(hass: HomeAssistant, msg: dict) -> tuple[dict[str, Any] | None, str]:
+    config_dir = Path(hass.config.config_dir)
+    config_text = await hass.async_add_executor_job(_read, config_dir / CONFIG_FILE) or ""
+    return await hass.async_add_executor_job(_load_source, config_dir, msg["source"], msg.get("text"), config_text)
+
+
+@websocket_api.websocket_command({vol.Required("type"): T + "migration_sources"})
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_migration_sources(hass, connection, msg):
+    config_dir = Path(hass.config.config_dir)
+    config_text = await hass.async_add_executor_job(_read, config_dir / CONFIG_FILE) or ""
+    sources = await hass.async_add_executor_job(migration.discover_sources, config_dir, GENERATED_FILE, config_text, LEGACY_FILE)
+    connection.send_result(msg["id"], {"sources": sources})
 
 
 @websocket_api.websocket_command({vol.Required("type"): T + "migration_preview", **_SOURCE})
 @websocket_api.require_admin
 @websocket_api.async_response
 async def ws_migration_preview(hass, connection, msg):
-    imp = await _load_import(hass, msg["source"])
+    try:
+        imp, label = await _load_import(hass, msg)
+    except (ValueError, OSError) as err:
+        connection.send_error(msg["id"], "nothing_to_import", str(err))
+        return
     if imp is None:
         connection.send_error(msg["id"], "nothing_to_import", "No recorder configuration found at that source.")
         return
     cfg = await _config_info(hass)
     text = await hass.async_add_executor_job(_read, Path(hass.config.path(CONFIG_FILE))) or ""
     after = migration.activate(text, GENERATED_FILE)
+    note = ""
+    if msg["source"].startswith("file:") and label != str(cfg.get("include_target", "")).strip().strip("'\""):
+        note = (
+            f"{label} is not changed by Recorder Studio. After activation, remove its recorder: section yourself, "
+            "otherwise Home Assistant reports a duplicate recorder configuration."
+        )
     connection.send_result(
         msg["id"],
         {
             "import": {**imp, "excluded_count": len(imp["excluded_entities"])},
+            "label": label,
+            "note": note,
             "config_state": cfg["state"],
             "diff": migration.diff_text(text, after, CONFIG_FILE) if cfg["state"] != "active" else "",
+            "current_excluded": len(_d(hass)["excluded_entities"]),
         },
     )
 
 
-@websocket_api.websocket_command({vol.Required("type"): T + "migration_import", vol.Required("confirm"): True, **_SOURCE})
+@websocket_api.websocket_command(
+    {vol.Required("type"): T + "migration_import", vol.Required("confirm"): True, vol.Optional("merge", default=False): bool, **_SOURCE}
+)
 @websocket_api.require_admin
 @websocket_api.async_response
 async def ws_migration_import(hass, connection, msg):
     if READ_ONLY_MODE:
         connection.send_error(msg["id"], "read_only", "Recorder Studio is in read-only mode: write actions are disabled.")
         return
-    imp = await _load_import(hass, msg["source"])
+    try:
+        imp, _label = await _load_import(hass, msg)
+    except (ValueError, OSError) as err:
+        connection.send_error(msg["id"], "nothing_to_import", str(err))
+        return
     if imp is None:
         connection.send_error(msg["id"], "nothing_to_import", "No recorder configuration found at that source.")
         return
     d = _d(hass)
-    d["options"].update(imp["options"])
-    d["excluded_entities"] = imp["excluded_entities"]
-    d["rescued_entities"] = imp["rescued_entities"]
-    d["rules_text"] = imp["rules_text"]
+    warnings = list(imp["warnings"])
+    if msg["merge"]:
+        merged, extra = migration.merge_import(
+            {"options": d["options"], "excluded_entities": d["excluded_entities"], "rescued_entities": d["rescued_entities"], "rules_text": d["rules_text"]},
+            imp,
+        )
+        d["options"].update(merged["options"])
+        d["excluded_entities"], d["rescued_entities"], d["rules_text"] = merged["excluded_entities"], merged["rescued_entities"], merged["rules_text"]
+        warnings += extra
+    else:
+        d["options"].update(imp["options"])
+        d["excluded_entities"] = imp["excluded_entities"]
+        d["rescued_entities"] = imp["rescued_entities"]
+        d["rules_text"] = imp["rules_text"]
     await service.async_persist(hass)
-    connection.send_result(msg["id"], {"warnings": imp["warnings"], "excluded": len(imp["excluded_entities"])})
+    connection.send_result(msg["id"], {"warnings": warnings, "excluded": len(d["excluded_entities"])})
 
 
 def _activate_files(config_path: Path) -> str:

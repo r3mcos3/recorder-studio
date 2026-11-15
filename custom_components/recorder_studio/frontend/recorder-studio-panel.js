@@ -65,6 +65,10 @@ class RecorderStudioPanel extends LitElement {
     _toast: { state: true },
     _form: { state: true },
     _migration: { state: true },
+    _sources: { state: true },
+    _paste: { state: true },
+    _filePath: { state: true },
+    _merge: { state: true },
   };
 
   constructor() {
@@ -82,6 +86,10 @@ class RecorderStudioPanel extends LitElement {
     this._toast = null;
     this._form = null;
     this._migration = null;
+    this._sources = null;
+    this._paste = "";
+    this._filePath = "";
+    this._merge = false;
     this._started = false;
     this._lastFull = 0;
   }
@@ -355,7 +363,7 @@ class RecorderStudioPanel extends LitElement {
 
       <nav role="tablist">
         ${TABS.map(
-          ([id, label, ic]) => html`<button role="tab" aria-selected=${this._tab === id} class=${classMap({ tab: true, on: this._tab === id })} @click=${() => (this._tab = id)}>
+          ([id, label, ic]) => html`<button role="tab" aria-selected=${this._tab === id} class=${classMap({ tab: true, on: this._tab === id })} @click=${() => { this._tab = id; if (id === "migration" && !this._sources) this._loadSources(); }}>
             ${icon(ic, 18)}<span>${label}</span>${id === "orphans" && orphanCount ? html`<b class="badge">${orphanCount}</b>` : nothing}
           </button>`
         )}
@@ -572,14 +580,23 @@ class RecorderStudioPanel extends LitElement {
   }
 
   /* ---------- Migration ---------- */
-  async _previewMigration(source) {
-    const res = await this._run("mig", () => this._ws("migration_preview", { source }));
-    if (res) this._migration = { source, ...res };
+  async _previewMigration(source, text) {
+    const res = await this._run("mig", () => this._ws("migration_preview", { source, ...(text !== undefined ? { text } : {}) }));
+    if (res) {
+      this._migration = { source, text, ...res };
+      this._merge = false;
+    }
+  }
+
+  async _loadSources() {
+    const res = await this._run("mig", () => this._ws("migration_sources"));
+    if (res) this._sources = res.sources;
   }
 
   /** Banner shortcut: go to Migration and open the activation preview (diff) straight away. */
   async _setup() {
     this._tab = "migration";
+    if (!this._sources) this._loadSources();
     const c = this._data.config;
     const source = c.imported ? "configuration" : c.legacy_file_present ? "legacy" : null;
     if (!source) {
@@ -603,17 +620,31 @@ class RecorderStudioPanel extends LitElement {
           <li class=${c.state === "active" ? "done" : ""}><b>2 · Activate</b>: configuration.yaml is backed up, the old block is commented out and <code>recorder: !include ${this._data.yaml_file}</code> is added.</li>
           <li><b>3 · Restart</b> Home Assistant.</li>
         </ol>
+      </div>
+      <div class="card">
+        <h2>Import from</h2>
+        <p class="muted">Recorder Studio looks for recorder settings in your configuration folder: configuration.yaml, the file it includes, GUI Recorder and any other YAML file such as packages. Files are only read, never changed.</p>
+        ${this._sources === null ? html`<p class="muted">Searching…</p>` : this._sources.length ? html`<ul class="sources">${this._sources.map((x) => html`<li>
+            <div class="grow"><b>${x.label}</b><br /><span class="muted">${fmtNum(x.excluded)} excluded ${x.excluded === 1 ? "entity" : "entities"}${x.note ? ` · ${x.note}` : ""}</span></div>
+            <button class="btn" ?disabled=${!!this._busy} @click=${() => this._previewMigration(x.id)}>Preview import</button>
+          </li>`)}</ul>` : html`<p class="muted">No recorder settings were found automatically. Use one of the options below.</p>`}
+        <div class="row"><button class="btn ghost" ?disabled=${!!this._busy} @click=${this._loadSources}>${icon("refresh", 18)} Search again</button></div>
+        <h3>Another file</h3>
         <div class="row">
-          <button class="btn" ?disabled=${!c.imported || !!this._busy} @click=${() => this._previewMigration("configuration")}>Import from configuration.yaml</button>
-          <button class="btn" ?disabled=${!c.legacy_file_present || !!this._busy} @click=${() => this._previewMigration("legacy")}>Import from gui_recorder.yaml</button>
+          <input class="grow" type="text" placeholder="path in the config folder, e.g. packages/recorder.yaml" .value=${this._filePath} @input=${(e) => (this._filePath = e.target.value)} />
+          <button class="btn" ?disabled=${!this._filePath.trim() || !!this._busy} @click=${() => this._previewMigration(`file:${this._filePath.trim()}`)}>Preview import</button>
         </div>
-        ${!c.imported && !c.legacy_file_present ? html`<p class="muted">Nothing to import was found.</p>` : nothing}
+        <h3>Paste YAML</h3>
+        <textarea rows="6" placeholder="recorder:&#10;  exclude:&#10;    entities:&#10;      - sensor.example" .value=${this._paste} @input=${(e) => (this._paste = e.target.value)}></textarea>
+        <div class="row"><button class="btn" ?disabled=${!this._paste.trim() || !!this._busy} @click=${() => this._previewMigration("paste", this._paste)}>Preview import</button></div>
       </div>
       ${m ? html`<div class="card" id="mig-preview">
-        <h2>Preview: ${m.source === "legacy" ? "gui_recorder.yaml" : "configuration.yaml"}</h2>
-        <p><b>${fmtNum(m.import.excluded_count)}</b> excluded entities will be imported. This replaces the current Recorder Studio exclusion list.</p>
+        <h2>Preview: ${m.label}</h2>
+        <p><b>${fmtNum(m.import.excluded_count)}</b> excluded entities found. ${this._merge ? "They are added to your current exclusions." : "By default they replace the current Recorder Studio exclusion list."}</p>
+        ${m.current_excluded ? html`<label class="inline"><input type="checkbox" .checked=${this._merge} @change=${(e) => (this._merge = e.target.checked)} /> Add to my current ${fmtNum(m.current_excluded)} exclusions instead of replacing them</label>` : nothing}
+        ${m.note ? html`<p class="status">${icon("warn", 18)} ${m.note}</p>` : nothing}
         ${m.import.warnings.length ? html`<ul class="warnings">${m.import.warnings.map((w) => html`<li>${icon("warn", 16)} ${w}</li>`)}</ul>` : nothing}
-        <button class="btn primary" ?disabled=${this._ro || !!this._busy} @click=${() => this._confirm({ title: "Import configuration", body: `Replaces the current exclusions with ${m.import.excluded_count} imported ones.`, confirmLabel: "Import", danger: false, onConfirm: async () => { const r = await this._run("mig", () => this._ws("migration_import", { source: m.source, confirm: true }), { success: "Imported." }); if (r) { this._migration = null; await this._refresh(); } } })}>Import now</button>
+        <button class="btn primary" ?disabled=${this._ro || !!this._busy} @click=${() => this._confirm({ title: "Import configuration", body: this._merge ? `Adds the ${m.import.excluded_count} imported exclusions to your current ones.` : `Replaces the current exclusions with ${m.import.excluded_count} imported ones.`, confirmLabel: "Import", danger: false, onConfirm: async () => { const r = await this._run("mig", () => this._ws("migration_import", { source: m.source, ...(m.text !== undefined ? { text: m.text } : {}), merge: this._merge, confirm: true }), { success: "Imported." }); if (r) { this._migration = null; await this._refresh(); } } })}>Import now</button>
         ${m.diff ? html`<h3>Activation diff (configuration.yaml)</h3><pre class="diff">${m.diff.split("\n").map((l) => html`<span class=${l.startsWith("+") && !l.startsWith("+++") ? "add" : l.startsWith("-") && !l.startsWith("---") ? "del" : ""}>${l}\n</span>`)}</pre>
           <button class="btn danger-o" ?disabled=${this._ro || !!this._busy} @click=${() => this._confirm({ title: "Activate in configuration.yaml", body: "A backup of configuration.yaml is created first. The recorder block is replaced by an include; a restart is needed.", confirmLabel: "Activate", danger: false, onConfirm: async () => { const r = await this._run("mig", () => this._ws("migration_activate", { confirm: true }), { success: (x) => `Activated. Backup: ${x.backup || "none"}` }); if (r) { this._migration = null; await this._refresh(); } } })}>Activate include</button>` : nothing}
       </div>` : nothing}`;
@@ -704,7 +735,7 @@ class RecorderStudioPanel extends LitElement {
     /* entities */
     .toolbar { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; position: sticky; top: 0; z-index: 3; } @media (max-width: 700px) { .toolbar { grid-template-columns: 1fr 1fr; position: static; } .search { grid-column: 1 / -1; } }
     .toolbar .chips, .toolbar .count { grid-column: 1 / -1; } .search { display: flex; align-items: center; gap: 8px; border: 1px solid var(--rs-line); border-radius: 999px; padding: 0 14px; color: var(--rs-muted); } .search input { flex: 1; border: 0; background: none; color: var(--primary-text-color); font: inherit; padding: 10px 0; outline: none; min-width: 0; } .search:focus-within { border-color: var(--primary-color); }
-    select, input[type=number], textarea { background: var(--card-background-color, transparent); color: var(--primary-text-color); border: 1px solid var(--rs-line); border-radius: 8px; padding: 9px 10px; font: inherit; min-width: 0; }
+    select, input[type=number], input[type=text], textarea { background: var(--card-background-color, transparent); color: var(--primary-text-color); border: 1px solid var(--rs-line); border-radius: 8px; padding: 9px 10px; font: inherit; min-width: 0; }
     .chips { display: flex; gap: 6px; flex-wrap: wrap; } .chip { border: 1px solid var(--rs-line); background: none; color: var(--primary-text-color); border-radius: 999px; padding: 4px 12px; font: inherit; font-size: .85rem; cursor: pointer; } .chip.on { background: var(--primary-color); border-color: var(--primary-color); color: var(--text-primary-color, #fff); }
     .count { color: var(--rs-muted); font-size: .85rem; display: flex; gap: 12px; flex-wrap: wrap; } .bulk { margin-left: auto; } .hint { color: var(--rs-muted); font-size: .85rem; margin: 0 4px 10px; }
     .dev { padding: 0; overflow: hidden; } .dev-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px; cursor: pointer; } .dev-head:hover { background: color-mix(in srgb, var(--primary-text-color) 4%, transparent); }
@@ -723,6 +754,8 @@ class RecorderStudioPanel extends LitElement {
     /* migration */
     .status { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; color: var(--rs-warn); } .status.ok { color: var(--rs-ok); }
     .steps { list-style: none; padding-left: 0; display: grid; gap: 8px; color: var(--primary-text-color); } .steps li.done { color: var(--rs-muted); }
+    .sources { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 8px; } .sources li { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 10px 12px; border: 1px solid var(--rs-line); border-radius: 10px; } .sources .grow { min-width: 0; overflow-wrap: anywhere; }
+    label.inline { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
     .warnings { list-style: none; padding: 0; display: grid; gap: 6px; color: var(--rs-warn); font-size: .9rem; } .warnings li { display: flex; gap: 6px; align-items: flex-start; }
     h3 { margin-top: 16px; } .diff { background: color-mix(in srgb, var(--primary-text-color) 6%, transparent); border-radius: 8px; padding: 12px; overflow: auto; font-size: .78rem; line-height: 1.5; max-height: 320px; margin: 8px 0 12px; } .diff .add { color: var(--rs-ok); } .diff .del { color: var(--rs-err); }
     /* settings */

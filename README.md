@@ -28,8 +28,9 @@ history that is no longer wanted.
   device, repack the database, restart Home Assistant. Every destructive action shows its estimated impact and asks for confirmation;
   bulk purges require typing `PURGE`.
 - **Orphaned exclusions.** Finds excluded entities that no longer exist and have no history, with a one-click clean-up.
-- **Guided migration.** Imports an existing `recorder:` block from `configuration.yaml` (or the output of GUI Recorder)
-  and switches `configuration.yaml` to the generated file, with a diff preview and an automatic backup.
+- **Guided migration.** Finds existing recorder settings by itself (inline in `configuration.yaml`, the file it includes,
+  GUI Recorder, packages or any other YAML file), or takes a file path or pasted YAML, and switches `configuration.yaml`
+  to the generated file, with a diff preview and an automatic backup.
 - **Follows your theme.** Light and dark, responsive down to phone width, keyboard accessible.
 
 ![Entities](docs/images/entities.png)
@@ -81,7 +82,7 @@ continue with step 3 above.
 | **Entities** | Device tree with a recording toggle per device and per entity, records and share per row, search, filters and sorting. Changes stay pending until you press **Save changes** (a bar at the bottom shows how many). A trash button on every entity and every device purges its history (the impact is shown first). |
 | **Maintenance** | Purge by retention, purge excluded entities, repack, restart Home Assistant. |
 | **Orphans** | Excluded entities that no longer exist anywhere and have no history. Remove them in bulk; nothing is deleted from the database. |
-| **Migration** | Import an existing recorder config and activate the include in `configuration.yaml`. |
+| **Migration** | Import an existing recorder config from any of the detected sources, a file or pasted YAML, and activate the include in `configuration.yaml`. |
 | **Settings** | Retention (`purge_keep_days`), auto purge, auto repack, commit interval, and optional manual rules. |
 
 ### Manual rules
@@ -138,15 +139,23 @@ Nothing is written at startup; installing the integration alone changes nothing 
 
 Open **Migration** (or click *Set up* in the banner). Two steps, each with its own confirmation:
 
-1. **Import** the existing exclusions into Recorder Studio, either from the inline `recorder:` block in
-   `configuration.yaml` or from a standalone file such as GUI Recorder's `gui_recorder.yaml` (read only, never
-   modified). Unsupported options are listed as warnings instead of being dropped silently, and values that use YAML
-   tags such as `!secret` are never imported as plain text.
+1. **Import** the existing exclusions into Recorder Studio. The tab lists every place in your configuration folder that
+   holds recorder settings (an inline `recorder:` block in `configuration.yaml`, the file it includes, GUI Recorder's
+   `gui_recorder.yaml`, and other YAML files up to three folders deep such as `packages/`). You can also enter a path
+   inside the configuration folder or paste YAML (a `recorder:` block or bare options such as `exclude:`). Files are only
+   read, never modified; `secrets.yaml`, `.storage` and `custom_components` are skipped. Unsupported options are listed as
+   warnings instead of being dropped silently, and values that use YAML tags such as `!secret` are never imported as
+   plain text. Importing replaces your current exclusions, or, with the checkbox, adds to them, so you can combine
+   several sources.
 2. **Activate.** A diff shows exactly what changes in `configuration.yaml`. On confirmation the file is backed up as
    `configuration.yaml.recorder_studio_backup_<timestamp>`, the old `recorder:` block is commented out and
    `recorder: !include recorder_studio.yaml` is added.
 
 Then restart Home Assistant. To go back at any time, point the include at the old file or restore the backup.
+
+> If the recorder settings came from a file other than `configuration.yaml` (for example a package), that file is not
+> changed. Remove its `recorder:` section yourself after activating, otherwise Home Assistant reports a duplicate
+> recorder configuration. The panel shows this note next to the source.
 
 ![Migration](docs/images/migration.png)
 

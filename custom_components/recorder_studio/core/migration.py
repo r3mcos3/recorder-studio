@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import difflib
+import os
 import re
+from pathlib import Path
 from typing import Any
 
 import yaml
@@ -11,6 +13,14 @@ from .rules import rules_to_text
 
 SIMPLE_OPTIONS = ("auto_purge", "auto_repack", "purge_keep_days", "commit_interval", "db_url", "db_max_retries", "db_retry_wait")
 KNOWN_TOP = set(SIMPLE_OPTIONS) | {"exclude", "include"}
+MAX_FILE_BYTES = 1_000_000
+MAX_FILES_SCANNED = 600
+MAX_DEPTH = 3
+SKIP_DIRS = {
+    ".storage", ".git", ".cloud", ".venv", "custom_components", "www", "deps", "tts", "backups", "blueprints",
+    "themes", "node_modules", "__pycache__", "zigbee2mqtt", "esphome", "image", "media", "tmp",
+}
+SKIP_FILES = {"secrets.yaml", "known_devices.yaml"}
 MARKER = "# [recorder_studio] previous recorder config, replaced by the include below:"
 
 
@@ -146,3 +156,134 @@ def diff_text(before: str, after: str, name: str = "configuration.yaml") -> str:
             before.splitlines(keepends=True), after.splitlines(keepends=True), f"{name} (now)", f"{name} (after)"
         )
     )
+
+
+# ---- more migration sources ------------------------------------------------
+
+def _looks_like_recorder(data: dict[str, Any]) -> bool:
+    """A bare mapping is only accepted as recorder config when it uses recorder keys exclusively."""
+    return bool(data) and set(data) <= KNOWN_TOP and bool(set(data) & {"exclude", "include"})
+
+
+def _find_recorder_mapping(data: Any, depth: int = 0) -> dict[str, Any] | None:
+    """Find a `recorder:` mapping at the top level, or nested in e.g. homeassistant.packages (depth <= 3)."""
+    if not isinstance(data, dict) or depth > 3:
+        return None
+    if isinstance(data.get("recorder"), dict):
+        return data["recorder"]
+    for value in data.values():
+        if (found := _find_recorder_mapping(value, depth + 1)) is not None:
+            return found
+    return None
+
+
+def recorder_mapping(text: str) -> dict[str, Any] | None:
+    """Return the recorder config contained in `text` (a `recorder:` key anywhere shallow, or a bare recorder mapping)."""
+    try:
+        data = yaml.load(text, Loader=_Loader)
+    except yaml.YAMLError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    found = _find_recorder_mapping(data)
+    if found is not None:
+        return found
+    return data if _looks_like_recorder(data) else None
+
+
+def parse_text(text: str) -> dict[str, Any]:
+    """Parse pasted/loaded YAML text into the import model; raises ValueError when it holds no recorder config."""
+    mapping = recorder_mapping(text)
+    if mapping is None:
+        raise ValueError("No recorder configuration found (expected a recorder: block or recorder options such as exclude:).")
+    return parse_recorder_config(mapping)
+
+
+def safe_config_path(config_dir: Path, rel: str) -> Path:
+    """Resolve a user-given relative yaml path strictly inside the config directory."""
+    if not rel or rel.startswith(("/", "\\")) or ".." in Path(rel).parts:
+        raise ValueError("Use a path relative to the configuration folder.")
+    if Path(rel).suffix.lower() not in (".yaml", ".yml"):
+        raise ValueError("Only .yaml and .yml files can be imported.")
+    base = config_dir.resolve()
+    path = (base / rel).resolve()
+    if base != path and base not in path.parents:
+        raise ValueError("The file must be inside the configuration folder.")
+    if not path.is_file():
+        raise ValueError(f"File not found: {rel}")
+    if path.stat().st_size > MAX_FILE_BYTES:
+        raise ValueError("The file is too large to import (limit 1 MB).")
+    return path
+
+
+def discover_sources(config_dir: Path, our_file: str, config_text: str, legacy_file: str = "gui_recorder.yaml") -> list[dict[str, Any]]:
+    """List the places in the config folder that contain a recorder configuration that can be imported.
+
+    Looks at configuration.yaml itself, the file it includes for recorder:, GUI Recorder's file, and any other yaml
+    file (up to 3 folders deep, e.g. packages) with a recorder section. Read-only; secrets are never read.
+    """
+    info = inspect_configuration(config_text, our_file)
+    include_target = info.get("include_target", "").strip().strip("'\"") if info["state"] == "other_include" else ""
+    out: list[dict[str, Any]] = []
+    if info["state"] == "inline" and info.get("imported"):
+        out.append({"id": "configuration", "label": "configuration.yaml (inline recorder: block)", "path": "configuration.yaml",
+                    "kind": "inline", "excluded": len(info["imported"]["excluded_entities"]), "note": ""})
+
+    base = config_dir.resolve()
+    scanned = 0
+    found: list[dict[str, Any]] = []
+    for root, dirs, files in os.walk(base):
+        depth = len(Path(root).relative_to(base).parts)
+        dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS and not d.startswith(".")) if depth < MAX_DEPTH else []
+        for name in sorted(files):
+            if not name.lower().endswith((".yaml", ".yml")) or name in SKIP_FILES or name in (our_file, "configuration.yaml"):
+                continue
+            path = Path(root) / name
+            if path.is_symlink():
+                continue
+            rel = path.relative_to(base).as_posix()
+            scanned += 1
+            if scanned > MAX_FILES_SCANNED:
+                break
+            try:
+                if path.stat().st_size > MAX_FILE_BYTES:
+                    continue
+                text = path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+            if "recorder" not in text and "exclude" not in text:
+                continue
+            mapping = recorder_mapping(text)
+            if mapping is None:
+                continue
+            parsed = parse_recorder_config(mapping)
+            if rel == include_target:
+                kind, note = "included", "Included by configuration.yaml; it is replaced when you activate."
+            elif rel == legacy_file:
+                kind, note = "legacy", "GUI Recorder's file; it stays untouched and becomes inert after activation."
+            else:
+                kind, note = "other", (
+                    "This file is not changed. After activation, remove its recorder: section yourself, otherwise Home Assistant "
+                    "reports a duplicate recorder configuration."
+                )
+            found.append({"id": "legacy" if rel == legacy_file else f"file:{rel}", "label": rel, "path": rel, "kind": kind,
+                          "excluded": len(parsed["excluded_entities"]), "note": note})
+    order = {"included": 0, "legacy": 1, "other": 2}
+    return out + sorted(found, key=lambda e: (order[e["kind"]], e["path"]))
+
+
+def merge_import(existing: dict[str, Any], imported: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    """Combine an import with what Recorder Studio already has: entities are united, existing manual rules win."""
+    warnings: list[str] = []
+    rules = existing.get("rules_text", "")
+    if imported.get("rules_text", "").strip():
+        if not rules.strip():
+            rules = imported["rules_text"]
+        elif rules.strip() != imported["rules_text"].strip():
+            warnings.append("The imported manual rules differ from your current rules; your current rules were kept.")
+    return {
+        "options": {**existing.get("options", {}), **imported.get("options", {})},
+        "excluded_entities": sorted(set(existing.get("excluded_entities", [])) | set(imported.get("excluded_entities", []))),
+        "rescued_entities": sorted(set(existing.get("rescued_entities", [])) | set(imported.get("rescued_entities", []))),
+        "rules_text": rules,
+    }, warnings

@@ -44,7 +44,7 @@ if (q.has("phone")) document.getElementById("frame").classList.add("phone");
 await el.updateComplete;
 if (q.has("analyze")) await el._analyze();
 await el.updateComplete; await new Promise((r) => setTimeout(r, 400));
-if (q.get("tab")) el._tab = q.get("tab");
+if (q.get("tab")) {{ el._tab = q.get("tab"); if (el._tab === "migration") await el._loadSources(); }}
 if (q.get("open") === "all") el._open = new Set(el._data.tree.map((d) => d.device_id));
 if (q.get("search")) el._search = q.get("search");
 if (q.has("pending")) el._toggle(el._entities.slice(0, 4).map((e) => e.entity_id), false);
