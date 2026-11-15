@@ -12,8 +12,11 @@ def _merge(loaded: dict | None) -> dict:
     data = copy.deepcopy(DEFAULT_DATA)
     if loaded:
         opts = {**data["options"], **loaded.get("options", {})}
+        alerts = {**data["alerts"], **(loaded.get("alerts") or {})}
         data.update({k: v for k, v in loaded.items() if k in data})
         data["options"] = opts
+        data["alerts"] = alerts
+    data["dismissed"] = sorted({str(e).strip() for e in data["dismissed"] if str(e).strip()})
     for key in ("excluded_entities", "rescued_entities"):
         data[key] = sorted({str(e).strip() for e in data[key] if str(e).strip()})
     return data

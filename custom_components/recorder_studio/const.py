@@ -30,7 +30,13 @@ DEFAULT_DATA = {
     "rescued_entities": [],
     "rules_text": "",
     "stats": None,
+    "history": [],  # daily {d, size, records, recent} snapshots, see core/history.py
+    "dismissed": [],  # suggestions the user hid
+    "alerts": {"enabled": True, "free_percent": 10, "growth_percent": 25},
 }
+
+ALERT_INTERVAL_HOURS = 6  # background check (read-only light analysis + repairs issues)
+ATTR_REFRESH_SECONDS = 3600  # the slow per-entity attribute size measurement is repeated at most hourly
 
 # When True every write action (yaml, purge, repack, restart, migration, settings) is refused
 # server-side; statistics and the entity list keep working. Useful for a cautious first run.
