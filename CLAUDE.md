@@ -102,6 +102,10 @@ python3 scripts/build_preview.py      # rebuild preview/preview.html
 
 ## Open items and ideas parked
 
+- **Upstream watch:** `.github/workflows/upstream-watch.yaml` checks weekly (Mondays) whether core PR #152168 (runtime
+  recorder exclusions), core PR #190600 and frontend PR #55659 (database usage) change state and opens an issue here when
+  they do. After handling such an issue, update the baseline in `.github/scripts/upstream_watch.sh`.
+
 - Catalog (default list of the Marketplace/HACS): pull request `hacs/default#14173` is waiting for review (new additions
   take months). Do not request a review (they close the PR). The README button uses the `marketplace_repository`
   my-link; the old `hacs_repository` link also still works.
