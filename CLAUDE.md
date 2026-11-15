@@ -86,7 +86,8 @@ python3 scripts/build_preview.py      # rebuild preview/preview.html
   `Release` workflow then creates the GitHub release by itself once `Validate` is green. Its notes are built from the
   commit subjects (`.github/scripts/release_notes.sh`: ✨ New, 🐛 Fixes, other), so write meaningful commit subjects;
   `--generate-notes` is not used because we commit to main without pull requests. Docs-only
-  or CI-only commits need no release. Before finishing a work session, check `git log vX.Y.Z..main` and release if
+  or CI-only commits need no release. After each release the maintainer also updates the changelog section in the
+  first post of the Home Assistant community forum topic (not automated; needs the owner's forum session). Before finishing a work session, check `git log vX.Y.Z..main` and release if
   user-facing changes are waiting.
 - README: keep the troubleshooting table, limitations and tab descriptions in sync with the code. Screenshots in
   `docs/images/` are cropped real screenshots; they show real entity names, so check them before publishing new ones.
