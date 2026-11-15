@@ -22,9 +22,18 @@ history that is no longer wanted.
 - **See how big the database is.** The total size (database + WAL + SHM) is always shown next to the title. After an
   analysis you also get the size per table (states, attributes, statistics, events, …) including indexes, and how much
   unused space a repack would return to the disk.
+- **Suggestions.** A list of entities that look like noise (diagnostic or technical values, big share of the database),
+  with the space excluding them would save. One click queues the exclusion; entities with long-term statistics get a
+  warning, and you can hide suggestions you do not want.
+- **Growth and trend.** Records written in the last 24 hours (the real ingest rate, unaffected by purges), the busiest
+  entities, a chart of the database size over time and, when the file keeps growing, a forecast of when the disk is full.
+- **Size per entity.** Besides record counts, an estimate of the space each entity and device takes, including its
+  attribute data, with sorting by size.
+- **Alerts.** Raises a Repairs alert when the disk runs low, is filling up or the database grows fast. It checks every few
+  hours, also while the panel is closed.
 - **Search and filter.** Search by entity id, name, device or platform; filter by domain or status (recorded, excluded,
   excluded but still has history); sort by name or by share of the database.
-- **Safe maintenance.** Purge by retention, purge the history of excluded entities, purge a single entity or a whole
+- **Safe maintenance.** Every purge dialog shows how old your latest Home Assistant backup is. Purge by retention, purge the history of excluded entities, purge a single entity or a whole
   device, repack the database, restart Home Assistant. Every destructive action shows its estimated impact and asks for confirmation;
   bulk purges require typing `PURGE`.
 - **Orphaned exclusions.** Finds excluded entities that no longer exist and have no history, with a one-click clean-up.
@@ -78,12 +87,12 @@ continue with step 3 above.
 
 | Tab | What it does |
 | --- | --- |
-| **Overview** | Total / current / obsolete records, database size split into file / WAL / SHM, records per entity with percentage, composition chart, size per table and reclaimable space. *Obsolete* means records that still exist for entities that are now excluded. |
+| **Overview** | Total / current / obsolete records, database size split into file / WAL / SHM, records or estimated size per entity, composition chart, suggestions, growth and trend, the busiest entities of the last 24 hours, size per table and reclaimable space. *Obsolete* means records that still exist for entities that are now excluded. |
 | **Entities** | Device tree with a recording toggle per device and per entity, records and share per row, search, filters and sorting. Changes stay pending until you press **Save changes** (a bar at the bottom shows how many). A trash button on every entity and every device purges its history (the impact is shown first). |
 | **Maintenance** | Purge by retention, purge excluded entities, repack, restart Home Assistant. |
 | **Orphans** | Excluded entities that no longer exist anywhere and have no history. Remove them in bulk; nothing is deleted from the database. |
 | **Migration** | Import an existing recorder config from any of the detected sources, a file or pasted YAML, and activate the include in `configuration.yaml`. |
-| **Settings** | Retention (`purge_keep_days`), auto purge, auto repack, commit interval, and optional manual rules. |
+| **Settings** | Retention (`purge_keep_days`), auto purge, auto repack, commit interval, optional manual rules and the alert thresholds. |
 
 ### Manual rules
 
@@ -123,6 +132,26 @@ Only `exclude.{domains,entity_globs,event_types}` and `include.{domains,entity_g
   configuration first and refuses to restart on errors.
 
 Purges are queued by the recorder. After a purge the panel keeps re-analysing until the records are gone, and the live updates take over after that.
+
+## Suggestions, growth and alerts
+
+- **Suggestions** are a heuristic, not a verdict. Only sensors, binary sensors, updates, numbers, selects, text, buttons,
+  events, images and the sun are ever suggested; lights, switches, climate, locks, covers and the like never are.
+  Diagnostic entities and names such as *uptime*, *linkquality* or *rssi* score highest. Entities with a `state_class`
+  feed long-term statistics (and possibly the Energy dashboard), so they are shown with a warning and are not counted in
+  the "could save" total; energy, battery, temperature and similar device classes are not suggested unless they are
+  diagnostic. Excluding goes through the normal pending-changes bar and needs a restart like any other exclusion.
+- **Growth** uses the real number of records written in the last 24 hours. The size chart needs a few days of history:
+  one snapshot per day is kept (about 13 months at most), also while the panel is closed. The forecast only appears while
+  the file is really growing.
+- **Size per entity** is an estimate: the entity's share of the `states` table plus its attribute data. The attribute
+  measurement is the slowest query Recorder Studio runs, so it is repeated at most once an hour, is aborted after 20
+  seconds and is read-only like everything else.
+- **Alerts** appear under **Settings > System > Repairs**: *disk space is low* (free space below your percentage),
+  *the database is filling the disk* (forecast of 30 days or less) and *the database is growing fast* (more than your
+  percentage in a week). They clear by themselves. Thresholds are on the Settings tab and apply without a restart.
+- The **backup check** in purge dialogs reads the list of Home Assistant backups. If that cannot be read it says so and
+  never blocks the purge.
 
 ## How it works
 
@@ -190,6 +219,8 @@ two comment lines) into an inline `recorder:` block and remove the include.
 | Banner says the file is not active | `configuration.yaml` does not include `recorder_studio.yaml`; use *Set up* on the Migration tab. |
 | Statistics are empty or old | The panel updates them every 30 seconds while it is open and visible. A first analysis on a very large database can take a moment; *Re-analyse* forces it. |
 | Changes have no effect | The recorder reads its configuration at startup. Restart Home Assistant. |
+| No trend chart yet | One snapshot is saved per day; the chart needs a few days, the forecast a few more. |
+| Size per entity looks off | It is an estimate. The attribute part is measured once an hour; right after a restart it is based on record counts. |
 
 ## Limitations
 
@@ -205,7 +236,9 @@ two comment lines) into an inline `recorder:` block and remove the include.
 
 ```bash
 uv venv .venv && uv pip install --python .venv/bin/python pytest pyyaml
-.venv/bin/python -m pytest
+.venv/bin/python -m pytest                    # pure core, fast, no Home Assistant needed
+uv venv .venv-ha --python 3.13 && uv pip install --python .venv-ha/bin/python pytest-homeassistant-custom-component
+.venv-ha/bin/python -m pytest tests_ha        # the Home Assistant glue (websocket API, alerts, config flow)
 python3 scripts/build_preview.py   # rebuilds preview/preview.html
 ```
 

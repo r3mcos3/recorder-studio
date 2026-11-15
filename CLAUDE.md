@@ -23,12 +23,16 @@ custom_components/recorder_studio/
     db_stats.py        read-only SQLite analysis (counts, dbstat table sizes, file sizes, free space)
     tree.py            device -> entity tree with record counts and percentages
     migration.py       inspect/import/activate of an existing recorder config (backup + diff)
+    history.py         daily size snapshots, growth trend and forecast
+    suggestions.py     heuristic "worth excluding" candidates (never lights/switches/climate; warns on statistics)
+    alerts.py          disk/growth alert evaluation, backup age
   __init__.py, const.py, config_flow.py, storage.py, panel.py, service.py, websocket_api.py   HA glue
   frontend/recorder-studio-panel.js    single Lit module, no build step
   frontend/vendor/lit.js               Lit 3.2.1 bundled once with esbuild (do not rebuild at runtime)
   brand/                               icons (HA 2026.3+ local brand images)
   translations/en.json, manifest.json
-tests/                 pytest on a synthetic SQLite database (conftest.py builds states + states_meta)
+tests/                 pytest on a synthetic SQLite database (conftest.py builds states + states_meta); no HA needed
+tests_ha/              pytest-homeassistant-custom-component tests of the glue (own pytest.ini, run in the `ha-tests` CI job)
 mock/mock-hass.js      fake hass object + websocket for the preview
 scripts/build_preview.py   builds preview/preview.html (single file, fake data, writes nothing)
 preview/preview.html   generated; rebuild after every panel or mock change
@@ -54,6 +58,14 @@ docs/images/           README screenshots (real screenshots, cropped to the pane
   while the tab is hidden, an action runs or a dialog is open. Background refreshes are `silent` so they never overwrite
   Settings the user is typing. There is no manual Refresh button; keep it that way.
 
+- **Insights (v0.4.0):** `analyze` also returns `recent_counts` (records of the last 24 h, from `states.last_updated_ts`) and,
+  at most hourly and time-limited to 20 s, `attr_bytes` (distinct attribute blob sizes per entity). Per-entity sizes are
+  estimates (`estimate_entity_bytes`). `async_analyze` records one history snapshot per day in the Store (`history`); a
+  background task (`ALERT_INTERVAL_HOURS`, plus once 2 min after start) runs a light analysis and `async_check_alerts`,
+  which creates/clears Repairs issues (`disk_low`, `disk_filling`, `db_growth`; texts in `translations/en.json`).
+  Alert thresholds live in `data["alerts"]` and apply without a restart. Purge dialogs call `backup_status`
+  (`homeassistant.components.backup.async_get_manager`); it must never block a purge.
+
 ## Gotchas learned the hard way
 
 - **Device registry:** iterate `dev_reg.devices` (yields `DeviceEntry` on current HA, ids on older). Do NOT use
@@ -72,7 +84,9 @@ uv venv .venv && uv pip install --python .venv/bin/python pytest pyyaml
 python3 scripts/build_preview.py      # rebuild preview/preview.html
 ```
 
-- Keep `core/` free of Home Assistant imports and cover new logic with tests on the synthetic database.
+- Keep `core/` free of Home Assistant imports and cover new logic with tests on the synthetic database. Glue changes
+  (websocket commands, services, alerts) get a test in `tests_ha/` (`.venv-ha/bin/python -m pytest tests_ha`; HA is
+  patched out of the dependency setup, see `tests_ha/conftest.py`).
 - The preview (`preview/preview.html#analyze&tab=entities&open=all&theme=dark&phone`, also `dialog=purge-excluded|
   purge-device|purge-entity|restart|migrate`) is the way to check UI changes without Home Assistant. Rebuild it after
   panel or mock changes.
