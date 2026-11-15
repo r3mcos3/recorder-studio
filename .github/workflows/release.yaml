@@ -1,0 +1,31 @@
+name: Release
+
+# Creates a GitHub release when the version in manifest.json has no tag yet,
+# and only after the Validate workflow (hassfest, HACS, tests) succeeded on main.
+on:
+  workflow_run:
+    workflows: ["Validate"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - name: Create release for a new version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(python3 -c "import json;print(json.load(open('custom_components/recorder_studio/manifest.json'))['version'])")
+          tag="v${version}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag already exists"; exit 0
+          fi
+          gh release create "$tag" --target "${{ github.event.workflow_run.head_sha }}" --title "Recorder Studio ${version}" --generate-notes
