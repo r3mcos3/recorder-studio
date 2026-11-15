@@ -135,6 +135,8 @@ Purges are queued by the recorder. After a purge the panel keeps re-analysing un
 
 ## Suggestions, growth and alerts
 
+![Suggestions](docs/images/suggestions.png)
+
 - **Suggestions** are a heuristic, not a verdict. Only sensors, binary sensors, updates, numbers, selects, text, buttons,
   events, images and the sun are ever suggested; lights, switches, climate, locks, covers and the like never are.
   Diagnostic entities and names such as *uptime*, *linkquality* or *rssi* score highest. Entities with a `state_class`
