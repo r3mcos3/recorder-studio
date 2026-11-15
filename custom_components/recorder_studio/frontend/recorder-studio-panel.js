@@ -37,6 +37,9 @@ const ago = (iso) => {
   return `${Math.floor(s / 86400)} d ago`;
 };
 
+const fmtDay = (d) => (d == null ? "" : d >= 365 ? "over a year" : d >= 60 ? `${Math.round(d / 30)} months` : d === 1 ? "1 day" : `${d} days`);
+const ALERT_NAMES = { disk_low: "Disk space is low", disk_filling: "The database is filling the disk", db_growth: "The database is growing fast" };
+
 const TABS = [
   ["overview", "Overview", "database"],
   ["entities", "Entities", "list"],
@@ -69,6 +72,8 @@ class RecorderStudioPanel extends LitElement {
     _paste: { state: true },
     _filePath: { state: true },
     _merge: { state: true },
+    _topBy: { state: true },
+    _alertForm: { state: true },
   };
 
   constructor() {
@@ -90,6 +95,8 @@ class RecorderStudioPanel extends LitElement {
     this._paste = "";
     this._filePath = "";
     this._merge = false;
+    this._topBy = "records";
+    this._alertForm = null;
     this._started = false;
     this._lastFull = 0;
   }
@@ -161,6 +168,8 @@ class RecorderStudioPanel extends LitElement {
         // a silent (background) refresh must not overwrite what the user is typing in Settings
         const o = this._data.options;
         this._form = { ...o, rules_text: this._data.rules_text };
+        const a = this._data.alerts;
+        this._alertForm = { enabled: a.enabled, free_percent: a.free_percent, growth_percent: a.growth_percent };
       }
     } catch (err) {
       if (!silent) this._error = err?.message || String(err);
@@ -227,6 +236,28 @@ class RecorderStudioPanel extends LitElement {
     );
   }
 
+  async _dismiss(ids, reset = false) {
+    await this._run(
+      "dismiss",
+      async () => {
+        await this._ws("dismiss_suggestions", { entity_ids: ids, reset });
+        await this._refresh({ silent: true });
+      },
+      { success: reset ? "Dismissed suggestions are shown again." : "Suggestion hidden." }
+    );
+  }
+
+  async _saveAlerts() {
+    await this._run(
+      "alerts",
+      async () => {
+        await this._ws("save_alerts", { ...this._alertForm });
+        await this._refresh();
+      },
+      { success: "Alert settings saved. They apply immediately, no restart needed." }
+    );
+  }
+
   async _analyze() {
     await this._run(
       "analyze",
@@ -264,9 +295,23 @@ class RecorderStudioPanel extends LitElement {
     return false;
   }
 
+  /** How fresh is the newest Home Assistant backup? Shown in purge dialogs; never blocks anything. */
+  async _backupNote() {
+    let b;
+    try {
+      b = await this._ws("backup_status");
+    } catch (err) {
+      b = { known: false };
+    }
+    if (!b.known) return { tone: "warn", text: "Could not check whether a backup exists. Make sure you have a recent one: a purge cannot be undone." };
+    if (!b.count) return { tone: "warn", text: "No Home Assistant backup was found. Make one first: a purge cannot be undone." };
+    if (b.age_hours > 24) return { tone: "warn", text: `Your latest backup is ${ago(b.last)}. Consider making a fresh one first: a purge cannot be undone.` };
+    return { tone: "ok", text: `Latest backup: ${ago(b.last)}.` };
+  }
+
   /** Opens a confirmation dialog; `onConfirm` runs only after explicit confirmation. */
-  _confirm({ title, body, impact, confirmLabel, phrase, danger = true, onConfirm }) {
-    this._dialog = { title, body, impact, confirmLabel, phrase, danger, typed: "", onConfirm };
+  _confirm({ title, body, impact, confirmLabel, phrase, danger = true, warning = null, onConfirm }) {
+    this._dialog = { title, body, impact, confirmLabel, phrase, danger, warning, typed: "", onConfirm };
   }
 
   async _askPurge(kind, entityIds = [], label = "") {
@@ -283,6 +328,7 @@ class RecorderStudioPanel extends LitElement {
         return;
       }
     }
+    const warning = await this._backupNote();
     const keep = this._data.options.purge_keep_days;
     const byId = new Map(this._entities.map((e) => [e.entity_id, e]));
     const stillRecorded = entityIds.filter((id) => byId.get(id) && this._isRecorded(byId.get(id))).length;
@@ -299,6 +345,7 @@ class RecorderStudioPanel extends LitElement {
       body: texts[1],
       impact: impact && `${fmtNum(impact.entities)} ${impact.entities === 1 ? "entity" : "entities"} · ${fmtNum(impact.records)} records · ≈ ${fmtBytes(impact.approx_bytes)}`,
       confirmLabel: "Purge permanently",
+      warning,
       phrase: kind === "entities" && entityIds.length === 1 ? null : "PURGE",
       onConfirm: () =>
         this._run(
@@ -389,10 +436,14 @@ class RecorderStudioPanel extends LitElement {
         <button class="btn primary" @click=${this._analyze} ?disabled=${!!this._busy}>${icon("search", 18)} Analyse database</button></div>`;
     }
     const pct = s.total_records ? Math.round((s.obsolete_records / s.total_records) * 100) : 0;
-    const max = s.top_entities[0]?.[1] || 1;
+    const bySize = this._topBy === "size" && s.top_sizes?.length;
+    const top = bySize ? s.top_sizes : s.top_entities;
+    const max = top[0]?.[1] || 1;
     const excluded = new Set(this._entities.filter((e) => !e.recorded).map((e) => e.entity_id));
+    const active = this._data.alerts?.active || [];
     return html`
       ${s.error ? html`<div class="banner error">${icon("warn")} ${s.error}</div>` : nothing}
+      ${active.length ? html`<div class="note warn">${icon("warn", 18)}<span><b>Alert:</b> ${active.map((a) => ALERT_NAMES[a] || a).join(" · ")}. Details under Settings &gt; System &gt; Repairs.</span></div>` : nothing}
       <div class="stats">
         ${this._stat("Total records", fmtNum(s.total_records), `${fmtNum(s.entity_count)} entities in database`)}
         ${this._stat("Current", fmtNum(s.current_records), "from recorded entities", "good")}
@@ -401,16 +452,21 @@ class RecorderStudioPanel extends LitElement {
       </div>
       <div class="grid2">
         <section class="card">
-          <h2>Records per entity <small>top ${s.top_entities.length}</small></h2>
+          <h2>${bySize ? "Size per entity" : "Records per entity"} <small>top ${top.length}${bySize ? " · estimate" : ""}</small></h2>
+          <div class="chips seg" role="group" aria-label="Rank by">
+            <button class=${classMap({ chip: true, on: !bySize })} @click=${() => (this._topBy = "records")}>Records</button>
+            <button class=${classMap({ chip: true, on: !!bySize })} ?disabled=${!s.top_sizes?.length} @click=${() => (this._topBy = "size")} title="Records plus attribute data, estimated">Size</button>
+          </div>
           <ul class="bars">
-            ${s.top_entities.map(
+            ${top.map(
               ([id, n, p]) => html`<li class=${classMap({ ex: excluded.has(id) })} title=${excluded.has(id) ? "Excluded, still has history" : id}>
                 <span class="lbl">${id}</span>
                 <span class="bar"><i style="width:${Math.max(2, (n / max) * 100)}%"></i></span>
-                <span class="val">${fmtNum(n)} <b>${fmtPct(p)}</b></span>
+                <span class="val">${bySize ? `≈ ${fmtBytes(n)}` : fmtNum(n)} <b>${fmtPct(p)}</b></span>
               </li>`
             )}
           </ul>
+          ${bySize && !s.has_attr_sizes ? html`<p class="muted">Attribute sizes are still being measured; until then this is based on record counts.</p>` : nothing}
         </section>
         <section class="card">
           <h2>Composition</h2>
@@ -426,7 +482,86 @@ class RecorderStudioPanel extends LitElement {
           ${s.obsolete_records ? html`<button class="btn danger-o" @click=${() => (this._tab = "maintenance")}>Clean up obsolete…</button>` : nothing}
         </section>
       </div>
+      ${this._suggestionCard()}
+      <div class="grid2 even">${this._growthCard(s)}${this._busiestCard(s)}</div>
       ${this._sizeCard(s)}`;
+  }
+
+  /* ---------- Overview: suggestions, growth ---------- */
+  _suggestionCard() {
+    const sg = this._data.suggestions;
+    if (!sg) return nothing;
+    const safe = sg.items.filter((i) => !i.warn && this._pending.get(i.entity_id) !== false);
+    return html`<section class="card">
+      <h2>Suggestions ${sg.items.length ? html`<small>could save ≈ ${fmtBytes(sg.save_bytes)} (${sg.save_percent}% of the data)</small>` : nothing}</h2>
+      ${sg.items.length
+        ? html`<p class="muted">Entities that look like noise: diagnostic or technical values that take up a lot of space. These are suggestions based on names, categories and size; you decide. History of entities you exclude stays until you purge it.</p>
+          <ul class="sugg">
+            ${sg.items.map((i) => {
+              const queued = this._pending.get(i.entity_id) === false;
+              return html`<li class=${classMap({ check: !!i.warn })}>
+                <div class="sg-main">
+                  <b>${i.name}</b> <code>${i.entity_id}</code>
+                  <div class="tags">${i.reasons.map((r) => html`<span>${r}</span>`)}</div>
+                  ${i.warn ? html`<div class="sg-warn">${icon("warn", 14)} ${i.warn}</div>` : nothing}
+                </div>
+                <div class="sg-size">${i.bytes ? html`≈ ${fmtBytes(i.bytes)}` : nothing}<small>${fmtPct(i.percent)}</small></div>
+                <div class="sg-act">
+                  <button class=${classMap({ btn: true, small: true, primary: !queued })} ?disabled=${this._ro || queued} @click=${() => this._toggle([i.entity_id], false)}>${queued ? "Queued" : "Exclude"}</button>
+                  <button class="icon-btn" title="Hide this suggestion" aria-label="Hide ${i.entity_id}" ?disabled=${this._ro || !!this._busy} @click=${() => this._dismiss([i.entity_id])}>${icon("close", 18)}</button>
+                </div>
+              </li>`;
+            })}
+          </ul>
+          <div class="row">
+            ${safe.length ? html`<button class="btn" ?disabled=${this._ro} @click=${() => this._toggle(safe.map((i) => i.entity_id), false)}>Exclude the ${safe.length} without warning</button>` : nothing}
+            ${sg.dismissed ? html`<button class="btn ghost" ?disabled=${this._ro || !!this._busy} @click=${() => this._dismiss([], true)}>Show ${sg.dismissed} hidden again</button>` : nothing}
+          </div>
+          <p class="muted">Excluding is saved with the bar at the bottom; Home Assistant needs a restart to apply it.</p>`
+        : html`<p class="muted">${icon("check", 16)} Nothing stands out right now. ${sg.dismissed ? html`<button class="link" @click=${() => this._dismiss([], true)}>Show ${sg.dismissed} hidden</button>` : nothing}</p>`}
+    </section>`;
+  }
+
+  _growthCard(s) {
+    const g = this._data.growth;
+    if (!g) return nothing;
+    const pts = g.points || [];
+    let chart = nothing;
+    if (pts.length >= 2) {
+      const sizes = pts.map((p) => p.size);
+      const lo = Math.min(...sizes);
+      const hi = Math.max(...sizes);
+      const span = hi - lo || 1;
+      const xy = pts.map((p, i) => [(i / (pts.length - 1)) * 300, 70 - ((p.size - lo) / span) * 60]);
+      const line = xy.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+      chart = html`<svg class="chart" viewBox="0 0 300 80" preserveAspectRatio="none" role="img" aria-label="Database size over ${pts.length} days, from ${fmtBytes(sizes[0])} to ${fmtBytes(sizes[sizes.length - 1])}">
+          <polygon points="0,80 ${line} 300,80" class="area"></polygon><polyline points=${line} class="ln"></polyline></svg>
+        <div class="axis"><span>${pts[0].d}</span><span>${fmtBytes(lo)} – ${fmtBytes(hi)}</span><span>${pts[pts.length - 1].d}</span></div>`;
+    }
+    let trendText;
+    if (g.growth_per_day == null) trendText = html`The trend shows up after a few days of history (${g.snapshots} ${g.snapshots === 1 ? "snapshot" : "snapshots"} so far).`;
+    else if (g.growth_per_day > 0 && g.days_to_full != null) trendText = html`The file grows about <b>${fmtBytes(g.growth_per_day)}</b> per day; at that pace the disk is full in <b>${fmtDay(g.days_to_full)}</b>.`;
+    else if (g.growth_per_day > 0) trendText = html`The file grows about <b>${fmtBytes(g.growth_per_day)}</b> per day.`;
+    else trendText = html`The file size is stable.`;
+    return html`<section class="card">
+      <h2>Growth</h2>
+      <p class="fact"><b>${fmtNum(g.recent_total)}</b> records in the last 24 hours${g.bytes_per_day ? html` · about <b>${fmtBytes(g.bytes_per_day)}</b> per day` : nothing}.</p>
+      ${chart}
+      <p class="muted">${trendText}</p>
+      ${g.disk_total ? html`<p class="muted">Disk: ${fmtBytes(g.disk_free)} free of ${fmtBytes(g.disk_total)} (${Math.round((g.disk_free * 100) / g.disk_total)}%).</p>` : nothing}
+    </section>`;
+  }
+
+  _busiestCard(s) {
+    const top = s.top_recent || [];
+    const max = top[0]?.[1] || 1;
+    return html`<section class="card">
+      <h2>Busiest in the last 24 hours</h2>
+      ${top.length
+        ? html`<ul class="bars">${top.map(([id, n]) => html`<li title=${id}><span class="lbl">${id}</span><span class="bar"><i style="width:${Math.max(2, (n / max) * 100)}%"></i></span><span class="val">${fmtNum(n)}</span></li>`)}</ul>
+          <p class="muted">What is being written right now, regardless of purges: about ${fmtNum(Math.round((top[0][1] / 24) * 10) / 10)} records per hour for the busiest entity.</p>`
+        : html`<p class="muted">No recent records found.</p>`}
+    </section>`;
   }
   _filesText() {
     const f = this._data.db_files;
@@ -468,9 +603,11 @@ class RecorderStudioPanel extends LitElement {
       });
       if (!ents.length) continue;
       if (this._sort === "records") ents = [...ents].sort((a, b) => b.records - a.records);
-      out.push({ ...dev, entities: ents, records: ents.reduce((a, e) => a + e.records, 0), percent: ents.reduce((a, e) => a + e.percent, 0) });
+      if (this._sort === "size") ents = [...ents].sort((a, b) => b.bytes - a.bytes);
+      out.push({ ...dev, entities: ents, records: ents.reduce((a, e) => a + e.records, 0), percent: ents.reduce((a, e) => a + e.percent, 0), bytes: ents.reduce((a, e) => a + (e.bytes || 0), 0) });
     }
     if (this._sort === "records") out.sort((a, b) => b.records - a.records);
+    if (this._sort === "size") out.sort((a, b) => b.bytes - a.bytes);
     return out;
   }
 
@@ -487,7 +624,7 @@ class RecorderStudioPanel extends LitElement {
           <option value="">All domains</option>${domains.map((d) => html`<option value=${d} ?selected=${d === this._domain}>${d}</option>`)}
         </select>
         <select aria-label="Sort" .value=${this._sort} @change=${(e) => (this._sort = e.target.value)}>
-          <option value="name" ?selected=${this._sort === "name"}>Sort by name</option><option value="records" ?selected=${this._sort === "records"}>Sort by share of database</option>
+          <option value="name" ?selected=${this._sort === "name"}>Sort by name</option><option value="records" ?selected=${this._sort === "records"}>Sort by share of database</option><option value="size" ?selected=${this._sort === "size"}>Sort by estimated size</option>
         </select>
         <div class="chips">${chips.map(([id, l]) => html`<button class=${classMap({ chip: true, on: this._status === id })} @click=${() => (this._status = id)}>${l}</button>`)}</div>
         <div class="count">${fmtNum(total)} entities in ${tree.length} devices
@@ -508,7 +645,7 @@ class RecorderStudioPanel extends LitElement {
     return html`<section class="card dev">
       <div class="dev-head" @click=${() => { const n = new Set(this._open); n.has(dev.device_id) ? n.delete(dev.device_id) : n.add(dev.device_id); this._open = n; }}>
         <span class=${classMap({ chev: true, open })}>${icon("chevron", 20)}</span>
-        <div class="dev-name"><b>${dev.name}</b><small>${ids.length} entities · ${rec} recorded${dev.records ? ` · ${fmtNum(dev.records)} records (${fmtPct(dev.percent)} of database)` : ""}</small></div>
+        <div class="dev-name"><b>${dev.name}</b><small>${ids.length} entities · ${rec} recorded${dev.records ? ` · ${fmtNum(dev.records)} records (${fmtPct(dev.percent)} of database)` : ""}${dev.bytes ? ` · ≈ ${fmtBytes(dev.bytes)}` : ""}</small></div>
         ${dev.device_id !== "__no_device__"
           ? html`<button class="icon-btn" title=${full.records ? `Purge the history of all ${full.entities.length} entities of this device` : "No records to purge (analyse first)"} aria-label="Purge ${dev.name}" ?disabled=${this._ro || !full.records}
               @click=${(e) => { e.stopPropagation(); this._askPurge("entities", full.entities.filter((x) => x.records).map((x) => x.entity_id), `device ${dev.name}`); }}>${icon("trash", 18)}</button>`
@@ -528,6 +665,7 @@ class RecorderStudioPanel extends LitElement {
       <div class="ent-name"><span>${e.name}</span><code>${e.entity_id}</code></div>
       <span class="plat">${e.platform}</span>
       <span class="recs" title="Share of all records in the database">${e.records ? html`${fmtNum(e.records)} <b>${fmtPct(e.percent)}</b>` : "–"}</span>
+      <span class="esize" title="Estimated space in the database: records plus attribute data">${e.bytes ? `≈ ${fmtBytes(e.bytes)}` : ""}</span>
       <button class="icon-btn" title=${e.records ? "Purge the history of this entity" : "No records to purge"} aria-label="Purge ${e.entity_id}" ?disabled=${this._ro || !e.records} @click=${() => this._askPurge("entities", [e.entity_id], e.entity_id)}>${icon("trash", 18)}</button>
       ${this._switch(rec ? "all" : "none", `Record ${e.entity_id}`, () => this._toggle([e.entity_id], !rec))}
     </li>`;
@@ -667,9 +805,28 @@ class RecorderStudioPanel extends LitElement {
       <div class="row"><button class="btn primary" ?disabled=${this._ro || !dirty || !!this._busy} @click=${() => this._run("save", async () => { await this._ws("save_settings", { ...f }); await this._refresh(); }, { success: "Settings saved. Restart to apply." })}>Save settings</button>
       <button class="btn" ?disabled=${!dirty} @click=${() => (this._form = { ...this._data.options, rules_text: this._data.rules_text })}>Reset</button></div>
     </div>
+    ${this._alertForm ? this._alertsCard() : nothing}
     <div class="card">
       <h3>About</h3>
       <p class="hint">Recorder Studio <b>v${this._data.version}</b> · SQLite · <a href="https://github.com/r3mcos3/recorder-studio/releases" target="_blank" rel="noopener">Release notes</a> · <a href="https://github.com/r3mcos3/recorder-studio/issues" target="_blank" rel="noopener">Report an issue</a></p>
+    </div>`;
+  }
+
+  _alertsCard() {
+    const a = this._alertForm;
+    const set = (k, v) => (this._alertForm = { ...a, [k]: v });
+    const saved = this._data.alerts;
+    const dirty = a.enabled !== saved.enabled || a.free_percent !== saved.free_percent || a.growth_percent !== saved.growth_percent;
+    const active = saved.active || [];
+    return html`<div class="card form">
+      <h2>Alerts</h2>
+      <p class="muted">Recorder Studio checks the database every few hours, also while this panel is closed, and raises an alert under <b>Settings &gt; System &gt; Repairs</b> when the disk runs low or the database grows fast. The alert disappears by itself when the problem is gone. No restart needed.</p>
+      <label class="inline"><input type="checkbox" .checked=${a.enabled} @change=${(e) => set("enabled", e.target.checked)} /> Raise alerts</label>
+      <label>Alert when free disk space drops below (%)<input type="number" min="1" max="90" .value=${String(a.free_percent)} ?disabled=${!a.enabled} @input=${(e) => set("free_percent", Number(e.target.value))} /></label>
+      <label>Alert when the database grew more than this in a week (%)<input type="number" min="5" max="1000" .value=${String(a.growth_percent)} ?disabled=${!a.enabled} @input=${(e) => set("growth_percent", Number(e.target.value))} /></label>
+      ${active.length ? html`<p class="status">${icon("warn", 18)} Active now: ${active.map((x) => ALERT_NAMES[x] || x).join(", ")}</p>` : html`<p class="status ok">${icon("check", 18)} No alerts active.</p>`}
+      <div class="row"><button class="btn primary" ?disabled=${this._ro || !dirty || !!this._busy} @click=${this._saveAlerts}>Save alert settings</button>
+      <button class="btn" ?disabled=${!dirty} @click=${() => (this._alertForm = { enabled: saved.enabled, free_percent: saved.free_percent, growth_percent: saved.growth_percent })}>Reset</button></div>
     </div>`;
   }
 
@@ -683,6 +840,7 @@ class RecorderStudioPanel extends LitElement {
         <div class="dlg-head ${d.danger ? "danger" : ""}">${icon(d.danger ? "warn" : "check", 24)}<h2 id="dlg-title">${d.title}</h2></div>
         <p>${d.body}</p>
         ${d.impact ? html`<div class="impact">${d.impact}</div>` : nothing}
+        ${d.warning ? html`<div class="note ${d.warning.tone}" role="note">${icon(d.warning.tone === "ok" ? "check" : "warn", 18)}<span>${d.warning.text}</span></div>` : nothing}
         ${d.phrase ? html`<label class="typed"><span>Type <b>${d.phrase}</b> to confirm</span><input autofocus autocomplete="off" .value=${d.typed} @input=${(e) => (this._dialog = { ...d, typed: e.target.value })} /></label>` : nothing}
         <div class="row end">
           <button class="btn" @click=${close}>Cancel</button>
@@ -740,13 +898,27 @@ class RecorderStudioPanel extends LitElement {
     .count { color: var(--rs-muted); font-size: .85rem; display: flex; gap: 12px; flex-wrap: wrap; } .bulk { margin-left: auto; } .hint { color: var(--rs-muted); font-size: .85rem; margin: 0 4px 10px; }
     .dev { padding: 0; overflow: hidden; } .dev-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px; cursor: pointer; } .dev-head:hover { background: color-mix(in srgb, var(--primary-text-color) 4%, transparent); }
     .chev { display: grid; transition: transform .15s; color: var(--rs-muted); } .chev.open { transform: rotate(90deg); } .dev-name { flex: 1; min-width: 0; display: flex; flex-direction: column; } .dev-name b { font-weight: 500; overflow: hidden; text-overflow: ellipsis; } .dev-name small { color: var(--rs-muted); }
-    .ents { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--rs-line); } .ent { display: grid; grid-template-columns: 1fr 90px 150px 34px 48px; gap: 8px; align-items: center; padding: 8px 14px 8px 42px; border-bottom: 1px solid var(--rs-line); } .ent:last-child { border-bottom: 0; }
+    .ents { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--rs-line); } .ent { display: grid; grid-template-columns: 1fr 90px 150px 84px 34px 48px; gap: 8px; align-items: center; padding: 8px 14px 8px 42px; border-bottom: 1px solid var(--rs-line); } .ent:last-child { border-bottom: 0; }
     .ent.off .ent-name span { text-decoration: line-through; opacity: .6; } .ent.changed { background: color-mix(in srgb, var(--primary-color) 9%, transparent); box-shadow: inset 3px 0 var(--primary-color); }
     .ent-name { display: flex; flex-direction: column; min-width: 0; } .ent-name span, .ent-name code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .ent-name code { background: none; padding: 0; color: var(--rs-muted); } .plat { color: var(--rs-muted); font-size: .8rem; overflow: hidden; text-overflow: ellipsis; } .recs { text-align: right; font-variant-numeric: tabular-nums; color: var(--rs-muted); font-size: .85rem; }
-    @media (max-width: 640px) { .ent { grid-template-columns: 1fr 34px 48px; padding-left: 16px; } .plat, .recs { display: none; } }
+    @media (max-width: 640px) { .ent { grid-template-columns: 1fr 34px 48px; padding-left: 16px; } .plat, .recs, .esize { display: none; } }
     .sw { width: 44px; height: 24px; border-radius: 999px; border: 0; background: color-mix(in srgb, var(--primary-text-color) 28%, transparent); position: relative; cursor: pointer; padding: 0; transition: background .15s; flex: none; } .sw i { position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: transform .15s; box-shadow: 0 1px 3px rgba(0,0,0,.35); }
     .sw.all { background: var(--primary-color); } .sw.all i { transform: translateX(20px); } .sw.mixed { background: var(--rs-warn); } .sw.mixed i { transform: translateX(10px); } .sw:disabled { opacity: .55; cursor: not-allowed; } .sw:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
     .savebar { position: fixed; left: 50%; transform: translateX(-50%); bottom: 16px; z-index: 10; display: flex; align-items: center; gap: 10px; width: min(760px, calc(100% - 24px)); padding: 10px 14px; background: var(--card-background-color, #fff); border: 1px solid var(--primary-color); border-radius: 999px; box-shadow: 0 6px 24px rgba(0,0,0,.28); font-size: .9rem; } @media (max-width: 600px) { .savebar { border-radius: 16px; flex-wrap: wrap; } }
+    .esize { text-align: right; font-variant-numeric: tabular-nums; color: var(--rs-muted); font-size: .8rem; white-space: nowrap; }
+    /* suggestions, growth, notes */
+    .grid2.even { grid-template-columns: 1fr 1fr; } @media (max-width: 800px) { .grid2.even { grid-template-columns: 1fr; } }
+    .chips.seg { margin: -4px 0 10px; }
+    .sugg { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 8px; } .sugg li { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: center; padding: 10px 12px; border: 1px solid var(--rs-line); border-radius: 10px; } .sugg li.check { border-style: dashed; }
+    .sg-main { min-width: 0; overflow-wrap: anywhere; } .sg-main code { color: var(--rs-muted); background: none; padding: 0; margin-left: 4px; }
+    .tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; } .tags span { font-size: .75rem; color: var(--rs-muted); border: 1px solid var(--rs-line); border-radius: 999px; padding: 1px 8px; }
+    .sg-warn { display: flex; align-items: flex-start; gap: 6px; margin-top: 6px; font-size: .8rem; color: var(--rs-warn); }
+    .sg-size { text-align: right; font-variant-numeric: tabular-nums; font-weight: 500; white-space: nowrap; } .sg-size small { display: block; color: var(--rs-muted); font-weight: 400; } .sg-act { display: flex; align-items: center; gap: 4px; }
+    @media (max-width: 640px) { .sugg li { grid-template-columns: 1fr auto; } .sg-size { grid-column: 1; text-align: left; } .sg-size small { display: inline; margin-left: 6px; } .sg-act { grid-row: 1 / span 2; grid-column: 2; flex-direction: column; } }
+    .fact { margin: 0 0 8px; } .chart { width: 100%; height: 90px; display: block; } .chart .area { fill: color-mix(in srgb, var(--primary-color) 18%, transparent); } .chart .ln { fill: none; stroke: var(--primary-color); stroke-width: 2; vector-effect: non-scaling-stroke; }
+    .axis { display: flex; justify-content: space-between; color: var(--rs-muted); font-size: .72rem; margin-bottom: 8px; font-variant-numeric: tabular-nums; }
+    .note { display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; border-radius: 8px; margin: 8px 0; font-size: .9rem; } .note.warn { background: color-mix(in srgb, var(--rs-warn) 16%, transparent); border: 1px solid color-mix(in srgb, var(--rs-warn) 45%, transparent); } .note.ok { background: color-mix(in srgb, var(--rs-ok) 12%, transparent); border: 1px solid color-mix(in srgb, var(--rs-ok) 40%, transparent); } .note svg { flex: none; margin-top: 1px; }
+    main > .note { margin-top: 0; margin-bottom: 12px; }
     /* maintenance */
     .warnbox { display: flex; gap: 10px; align-items: center; padding: 12px 14px; border-radius: var(--rs-radius); margin-bottom: 12px; background: color-mix(in srgb, var(--rs-err) 12%, transparent); border: 1px solid color-mix(in srgb, var(--rs-err) 45%, transparent); }
     .actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 12px; } @media (max-width: 420px) { .actions { grid-template-columns: 1fr; } } .action { display: flex; gap: 14px; align-items: center; justify-content: space-between; margin: 0; } .action p { margin: 0; color: var(--rs-muted); font-size: .88rem; } .action .btn { flex: none; }

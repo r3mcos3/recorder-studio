@@ -36,6 +36,12 @@ await import(url(PANEL.replace("__LIT__", JSON.stringify(litUrl))));
 const {{ createMockHass }} = await import(url(MOCK));
 const el = document.createElement("recorder-studio-panel");
 el.hass = createMockHass();
+const qq = new URLSearchParams(location.hash.slice(1));
+// Review switches: backup=none|old|unknown, alert=1
+if (qq.get("backup") === "none") el.hass.__S.backup = {{ known: true, count: 0 }};
+if (qq.get("backup") === "old") el.hass.__S.backup = {{ known: true, count: 2, hoursAgo: 96 }};
+if (qq.get("backup") === "unknown") el.hass.__S.backup = {{ known: false }};
+if (qq.has("alert")) el.hass.__S.alertActive = ["disk_filling", "db_growth"];
 document.getElementById("frame").append(el);
 // Deep links for review, e.g. preview.html#analyze&tab=entities&theme=dark&phone&open=all&dialog=purge-excluded
 const q = new URLSearchParams(location.hash.slice(1));
