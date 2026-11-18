@@ -9,7 +9,7 @@ entities (uptime counters, link quality, signal strength, …) can account for m
 exactly which entities take up how much of the database, lets you stop recording them with a toggle, and cleans up the
 history that is no longer wanted.
 
-> **SQLite only.** This integration manages Home Assistant's SQLite database. If you use (or want to use) **MariaDB or PostgreSQL**, or want the recorder database run for you, see the **[Recorder Studio DB add-on](FORUM_URL_PLACEHOLDER)**: it contains everything on this page and runs SQLite, MariaDB or PostgreSQL.
+> **SQLite only.** This integration manages Home Assistant's SQLite database. If you use (or want to use) **MariaDB or PostgreSQL**, or want the recorder database run for you, see the **[Recorder Studio DB add-on](https://community.home-assistant.io/t/recorder-studio-db-an-add-on-that-runs-mariadb-postgresql-or-sqlite-for-your-recorder-with-recorder-studio-built-in/1035261)**: it contains everything on this page and runs SQLite, MariaDB or PostgreSQL.
 
 ![Overview](docs/images/overview.png)
 
@@ -216,7 +216,7 @@ two comment lines) into an inline `recorder:` block and remove the include.
 | Problem | What to try |
 | --- | --- |
 | Panel does not appear | Add the integration under *Devices & services*, then hard-refresh (Ctrl+Shift+R). The panel is admin-only. |
-| The panel is missing and the log mentions a non-SQLite database | The recorder uses another database backend, so there is no panel. Use the [Recorder Studio DB add-on](FORUM_URL_PLACEHOLDER) instead. |
+| The panel is missing and the log mentions a non-SQLite database | The recorder uses another database backend, so there is no panel. Use the [Recorder Studio DB add-on](https://community.home-assistant.io/t/recorder-studio-db-an-add-on-that-runs-mariadb-postgresql-or-sqlite-for-your-recorder-with-recorder-studio-built-in/1035261) instead. |
 | Panel or icon looks outdated | Hard-refresh the browser. After updating the files, restart Home Assistant. |
 | Banner says the file is not active | `configuration.yaml` does not include `recorder_studio.yaml`; use *Set up* on the Migration tab. |
 | Statistics are empty or old | The panel updates them every 30 seconds while it is open and visible. A first analysis on a very large database can take a moment; *Re-analyse* forces it. |
@@ -226,7 +226,7 @@ two comment lines) into an inline `recorder:` block and remove the include.
 
 ## Limitations
 
-- SQLite only. For MariaDB or PostgreSQL use the [Recorder Studio DB add-on](FORUM_URL_PLACEHOLDER).
+- SQLite only. For MariaDB or PostgreSQL use the [Recorder Studio DB add-on](https://community.home-assistant.io/t/recorder-studio-db-an-add-on-that-runs-mariadb-postgresql-or-sqlite-for-your-recorder-with-recorder-studio-built-in/1035261).
 - Purging works per entity, per device, for all excluded entities, or by retention. It needs a recent analysis, because
   the confirmation dialog shows the impact first. Entities without a device cannot be purged as a group.
 - Live apply relies on two recorder internals (the `entity_filter` attribute and the listener stop/start the recorder also runs around backups). If a Home Assistant update changes them, Recorder Studio falls back to asking for a restart; it never leaves the recorder without its listeners.

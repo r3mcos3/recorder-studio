@@ -12,7 +12,7 @@ the default catalog is pending).
 
 **SQLite only.** The panel and statistics here are SQLite-only. MariaDB/PostgreSQL are covered by a separate project, the
 Recorder Studio DB add-on (repo `r3mcos3/recorder-studio-db`, runs the database itself and has this panel built in). Do not
-build multi-database support into this integration; point users to the add-on instead. (`FORUM_URL_PLACEHOLDER` in README
+build multi-database support into this integration; point users to the add-on instead. (`https://community.home-assistant.io/t/recorder-studio-db-an-add-on-that-runs-mariadb-postgresql-or-sqlite-for-your-recorder-with-recorder-studio-built-in/1035261` in README
 and translations is replaced by the add-on's forum topic once Remco has posted it.)
 
 ## Layout
