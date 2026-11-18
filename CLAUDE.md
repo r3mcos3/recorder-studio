@@ -43,8 +43,14 @@ docs/images/           README screenshots (real screenshots, cropped to the pane
 ## How it works (the important decisions)
 
 - Choices are stored in `.storage/recorder_studio.data` and rendered to **`recorder_studio.yaml`** in the HA config
-  folder (atomic write). `configuration.yaml` contains `recorder: !include recorder_studio.yaml`. The recorder reads it
-  **at startup only**, so changes need an HA restart; the panel shows a banner for that.
+  folder (atomic write). `configuration.yaml` contains `recorder: !include recorder_studio.yaml`. Changes are then applied to
+  the RUNNING recorder by `live.py` (entity filter, excluded event types, keep_days, auto_purge, auto_repack): it swaps
+  `instance.entity_filter` and re-creates the listeners with the recorder's own `_async_stop_queue_watcher_and_event_listener`
+  + `async_initialize` pair (the one it runs around backups). Only `db_url`, `commit_interval` and a configuration.yaml that does
+  not include our file yet still need a restart; the panel banner shows exactly that. Every step is guarded: if the
+  recorder lacks an attribute we use, nothing is changed and a restart is requested. The service `recorder_studio.apply_config`
+  (response: applied/restart/changed) lets the Recorder Studio DB add-on trigger the same. With a non-SQLite recorder the
+  integration loads without panel and only offers that service. Real-recorder test: `tests_ha_recorder/`.
 - Statistics use a strictly **read-only** SQLite connection (`mode=ro`). Everything that changes data goes through the
   official services `recorder.purge` and `recorder.purge_entities`. Never write to the database directly.
 - Purges are queued recorder tasks and can take a minute on a large database. The panel therefore polls `analyze`

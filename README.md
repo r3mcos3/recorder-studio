@@ -80,7 +80,7 @@ continue with step 3 above.
 2. **Check the situation.** The Migration tab tells you whether `configuration.yaml` already includes
    `recorder_studio.yaml`. If not, a blue banner offers a *Set up* shortcut.
 3. **Migrate** once (see [Migration](#migration)).
-4. **Pick what to stop recording** on the Entities tab, save, and restart Home Assistant when the banner asks for it.
+4. **Pick what to stop recording** on the Entities tab, save. It applies right away, no restart (only the first activation and a changed database URL or commit interval need one).
 5. **Clean up** the history you no longer want on the Maintenance tab.
 
 ## The tabs
@@ -128,7 +128,7 @@ Only `exclude.{domains,entity_globs,event_types}` and `include.{domains,entity_g
   entities, ignoring retention. The dialog shows the entities, records and approximate size first.
 - **Repack** calls `recorder.purge` with `repack: true` (so retention is applied too). It needs free disk space of
   roughly the database size and can block the recorder for several minutes.
-- **Restart Home Assistant** is needed to apply recorder configuration changes. Home Assistant validates the
+- **Restart Home Assistant** is only needed for the first activation, a changed database URL or commit interval. Home Assistant validates the
   configuration first and refuses to restart on errors.
 
 Purges are queued by the recorder. After a purge the panel keeps re-analysing until the records are gone, and the live updates take over after that.
@@ -142,7 +142,7 @@ Purges are queued by the recorder. After a purge the panel keeps re-analysing un
   Diagnostic entities and names such as *uptime*, *linkquality* or *rssi* score highest. Entities with a `state_class`
   feed long-term statistics (and possibly the Energy dashboard), so they are shown with a warning and are not counted in
   the "could save" total; energy, battery, temperature and similar device classes are not suggested unless they are
-  diagnostic. Excluding goes through the normal pending-changes bar and needs a restart like any other exclusion.
+  diagnostic. Excluding goes through the normal pending-changes bar and applies live like any other exclusion.
 - **Growth** uses the real number of records written in the last 24 hours. The size chart needs a few days of history:
   one snapshot per day is kept (about 13 months at most), also while the panel is closed. The forecast only appears while
   the file is really growing.
@@ -160,7 +160,7 @@ Purges are queued by the recorder. After a purge the panel keeps re-analysing un
 1. Your choices are stored in `.storage/recorder_studio.data` and rendered to **`recorder_studio.yaml`** in your
    config folder (written atomically, so Home Assistant never reads a half-written file).
 2. `configuration.yaml` contains `recorder: !include recorder_studio.yaml`. The Migration tab sets this up.
-3. The recorder reads that file **at startup**, so changes need a restart. The panel tells you when one is pending.
+3. Changes to the filter, retention, auto purge and auto repack are applied **to the running recorder** (no restart). The database URL and commit interval are only read at start-up; the panel tells you when a restart is pending.
 4. Statistics are read with a strictly **read-only** SQLite connection. Anything that changes data goes through the
    official `recorder.*` services.
 
@@ -220,7 +220,7 @@ two comment lines) into an inline `recorder:` block and remove the include.
 | Panel or icon looks outdated | Hard-refresh the browser. After updating the files, restart Home Assistant. |
 | Banner says the file is not active | `configuration.yaml` does not include `recorder_studio.yaml`; use *Set up* on the Migration tab. |
 | Statistics are empty or old | The panel updates them every 30 seconds while it is open and visible. A first analysis on a very large database can take a moment; *Re-analyse* forces it. |
-| Changes have no effect | The recorder reads its configuration at startup. Restart Home Assistant. |
+| Changes have no effect | Check that `configuration.yaml` includes `recorder_studio.yaml` (Migration tab, *Active*). If the panel still asks for a restart, the log says why (`Could not apply the recorder configuration live`). |
 | No trend chart yet | One snapshot is saved per day; the chart needs a few days, the forecast a few more. |
 | Size per entity looks off | It is an estimate. The attribute part is measured once an hour; right after a restart it is based on record counts. |
 
@@ -229,7 +229,7 @@ two comment lines) into an inline `recorder:` block and remove the include.
 - SQLite only.
 - Purging works per entity, per device, for all excluded entities, or by retention. It needs a recent analysis, because
   the confirmation dialog shows the impact first. Entities without a device cannot be purged as a group.
-- Recording changes need a Home Assistant restart.
+- Live apply relies on two recorder internals (the `entity_filter` attribute and the listener stop/start the recorder also runs around backups). If a Home Assistant update changes them, Recorder Studio falls back to asking for a restart; it never leaves the recorder without its listeners.
 - The per-table sizes need SQLite's `dbstat` module; if your SQLite build lacks it, that card is simply hidden.
 - Re-enabling recording for an entity that one of your manual domain/glob rules excludes is not supported; remove or
   narrow the rule instead.
