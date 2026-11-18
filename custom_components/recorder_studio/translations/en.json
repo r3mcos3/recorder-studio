@@ -23,5 +23,11 @@
       "title": "The database is growing fast",
       "description": "The recorder database grew {percent}% in the last week (now {database}). Open Recorder Studio to see which entities add the most."
     }
+  },
+  "services": {
+    "apply_config": {
+      "name": "Apply recorder configuration",
+      "description": "Applies recorder_studio.yaml to the running recorder without a restart: entity filter, retention and auto purge/repack. The database URL and commit interval still need a restart."
+    }
   }
 }

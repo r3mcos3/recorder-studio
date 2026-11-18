@@ -5,7 +5,7 @@ from datetime import timedelta
 import logging
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse, callback
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.event import async_call_later, async_track_time_interval
 
@@ -24,10 +24,19 @@ async def async_setup(hass: HomeAssistant, _config: dict) -> bool:
     return True
 
 
+async def _async_handle_apply_config(call: ServiceCall) -> dict:
+    """Apply recorder_studio.yaml to the running recorder (used by the Recorder Studio DB add-on)."""
+    return await service.async_apply_and_track(call.hass)
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    hass.services.async_register(DOMAIN, "apply_config", _async_handle_apply_config, supports_response=SupportsResponse.OPTIONAL)
+    entry.async_on_unload(lambda: hass.services.async_remove(DOMAIN, "apply_config"))
     if service.is_sqlite(hass) is False:
-        _LOGGER.error("Recorder Studio supports SQLite only; the recorder uses another backend.")
-        return False
+        # Another backend: the panel and statistics here are SQLite only (the Recorder Studio DB add-on covers those).
+        # Only the live-apply service stays available, so the add-on can change recorder settings without a restart.
+        _LOGGER.info("Recorder uses a non-SQLite database: Recorder Studio runs without its panel and only offers recorder_studio.apply_config.")
+        return True
     await async_load(hass)
     domain = hass.data[DOMAIN]
     domain["pending_restart"] = False

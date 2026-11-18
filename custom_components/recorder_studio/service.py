@@ -13,6 +13,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import ATTR_REFRESH_SECONDS, DOMAIN, GENERATED_FILE
 from .core import alerts, db_stats, history, suggestions, tree, yaml_writer
+from .live import async_apply_live
 from .storage import async_save
 
 ALERT_IDS = ("disk_low", "disk_filling", "db_growth")
@@ -53,11 +54,22 @@ async def async_write_yaml(hass: HomeAssistant) -> None:
     await hass.async_add_executor_job(yaml_writer.atomic_write, generated_path(hass), content)
 
 
-async def async_persist(hass: HomeAssistant) -> None:
-    """Save our storage and regenerate the YAML file (restart needed for recorder to apply it)."""
+async def async_persist(hass: HomeAssistant) -> dict[str, Any]:
+    """Save our storage, regenerate the YAML file and apply it to the running recorder where possible.
+
+    Only what the recorder cannot change while running (database URL, commit interval, or a configuration.yaml that
+    does not include our file yet) still needs a restart.
+    """
     await async_save(hass)
     await async_write_yaml(hass)
-    hass.data[DOMAIN]["pending_restart"] = True
+    return await async_apply_and_track(hass)
+
+
+async def async_apply_and_track(hass: HomeAssistant) -> dict[str, Any]:
+    result = await async_apply_live(hass)
+    hass.data[DOMAIN]["pending_restart"] = bool(result["restart"])
+    hass.data[DOMAIN]["live"] = result
+    return result
 
 
 async def async_analyze(hass: HomeAssistant, full: bool = True) -> dict[str, Any]:

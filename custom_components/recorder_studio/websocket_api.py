@@ -81,6 +81,7 @@ async def ws_get_state(hass, connection, msg):
             "alerts": {**d["alerts"], "active": hass.data[DOMAIN].get("active_alerts", [])},
             "config": await _config_info(hass),
             "pending_restart": hass.data[DOMAIN].get("pending_restart", False),
+            "live": hass.data[DOMAIN].get("live"),
             "yaml_file": GENERATED_FILE,
             "read_only": READ_ONLY_MODE,
         },
@@ -103,8 +104,8 @@ async def ws_set_recorded(hass, connection, msg):
     d["excluded_entities"] = sorted(current)
     # rescued entities only matter while excluded by a domain/glob rule; keep it consistent
     d["rescued_entities"] = sorted(set(d["rescued_entities"]) - ids) if not msg["recorded"] else d["rescued_entities"]
-    await service.async_persist(hass)
-    connection.send_result(msg["id"], {"excluded": len(d["excluded_entities"]), "summary": _summary(hass)})
+    live = await service.async_persist(hass)
+    connection.send_result(msg["id"], {"excluded": len(d["excluded_entities"]), "summary": _summary(hass), "live": live})
 
 
 @websocket_api.websocket_command(
@@ -132,8 +133,8 @@ async def ws_save_settings(hass, connection, msg):
     for key in ("purge_keep_days", "auto_purge", "auto_repack", "commit_interval"):
         d["options"][key] = msg[key]
     d["rules_text"] = msg["rules_text"]
-    await service.async_persist(hass)
-    connection.send_result(msg["id"], {"ok": True})
+    live = await service.async_persist(hass)
+    connection.send_result(msg["id"], {"ok": True, "live": live})
 
 
 @websocket_api.websocket_command({vol.Required("type"): T + "analyze", vol.Optional("light", default=False): bool})
@@ -231,8 +232,8 @@ async def ws_remove_orphans(hass, connection, msg):
     d = _d(hass)
     d["excluded_entities"] = sorted(set(d["excluded_entities"]) - orphans)
     d["rescued_entities"] = sorted(set(d["rescued_entities"]) - orphans)
-    await service.async_persist(hass)
-    connection.send_result(msg["id"], {"removed": len(orphans), "summary": _summary(hass)})
+    live = await service.async_persist(hass)
+    connection.send_result(msg["id"], {"removed": len(orphans), "summary": _summary(hass), "live": live})
 
 
 @websocket_api.websocket_command(
@@ -378,8 +379,8 @@ async def ws_migration_import(hass, connection, msg):
         d["excluded_entities"] = imp["excluded_entities"]
         d["rescued_entities"] = imp["rescued_entities"]
         d["rules_text"] = imp["rules_text"]
-    await service.async_persist(hass)
-    connection.send_result(msg["id"], {"warnings": warnings, "excluded": len(d["excluded_entities"])})
+    live = await service.async_persist(hass)
+    connection.send_result(msg["id"], {"warnings": warnings, "excluded": len(d["excluded_entities"]), "live": live})
 
 
 def _activate_files(config_path: Path) -> str:
