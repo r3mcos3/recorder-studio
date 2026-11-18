@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Recorder Studio",
-        "description": "Adds a sidebar panel to manage the recorder (SQLite only)."
+        "description": "Adds a sidebar panel to manage the recorder (SQLite only). Using MariaDB or PostgreSQL? See the [Recorder Studio DB add-on](FORUM_URL_PLACEHOLDER)."
       }
     },
     "abort": {

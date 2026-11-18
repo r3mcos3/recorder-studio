@@ -10,8 +10,10 @@ independent re-implementation inspired by GUI Recorder (MIT); no code was copied
 through the Home Assistant Marketplace (HA 2026.11+, it replaced HACS) or HACS (custom repository; a pull request to
 the default catalog is pending).
 
-**SQLite only.** The config flow refuses other backends. MariaDB/PostgreSQL support is a known, parked idea (see
-"Ideas parked" below); do not build it unless asked.
+**SQLite only.** The panel and statistics here are SQLite-only. MariaDB/PostgreSQL are covered by a separate project, the
+Recorder Studio DB add-on (repo `r3mcos3/recorder-studio-db`, runs the database itself and has this panel built in). Do not
+build multi-database support into this integration; point users to the add-on instead. (`FORUM_URL_PLACEHOLDER` in README
+and translations is replaced by the add-on's forum topic once Remco has posted it.)
 
 ## Layout
 

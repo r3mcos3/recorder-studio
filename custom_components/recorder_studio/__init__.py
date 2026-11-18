@@ -35,7 +35,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if service.is_sqlite(hass) is False:
         # Another backend: the panel and statistics here are SQLite only (the Recorder Studio DB add-on covers those).
         # Only the live-apply service stays available, so the add-on can change recorder settings without a restart.
-        _LOGGER.info("Recorder uses a non-SQLite database: Recorder Studio runs without its panel and only offers recorder_studio.apply_config.")
+        _LOGGER.info("Recorder uses a non-SQLite database: Recorder Studio runs without its panel and only offers recorder_studio.apply_config. For a panel with MariaDB/PostgreSQL see the Recorder Studio DB add-on.")
         return True
     await async_load(hass)
     domain = hass.data[DOMAIN]
