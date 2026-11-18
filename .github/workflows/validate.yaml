@@ -41,3 +41,4 @@ jobs:
           python-version: "3.13"
       - run: pip install pytest-homeassistant-custom-component
       - run: python -m pytest tests_ha -q
+      - run: python -m pytest tests_ha_recorder -q
