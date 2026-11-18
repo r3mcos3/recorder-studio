@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from homeassistant.config_entries import ConfigFlow
 
-from .const import DOMAIN
+from .const import ADDON_URL, DOMAIN
 
 
 class RecorderStudioConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -13,4 +13,4 @@ class RecorderStudioConfigFlow(ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="single_instance_allowed")
         if user_input is not None:
             return self.async_create_entry(title="Recorder Studio", data={})
-        return self.async_show_form(step_id="user")
+        return self.async_show_form(step_id="user", description_placeholders={"addon_url": ADDON_URL})

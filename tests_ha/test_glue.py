@@ -16,6 +16,7 @@ from .conftest import call
 async def test_config_flow_single_instance(hass, config_dir):
     r = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
     assert r["type"] == "form"
+    assert r["description_placeholders"]["addon_url"].startswith("https://community.home-assistant.io/t/recorder-studio-db")
     r = await hass.config_entries.flow.async_configure(r["flow_id"], {})
     assert r["type"] == "create_entry"
     again = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})

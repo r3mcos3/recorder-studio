@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 DOMAIN = "recorder_studio"
+ADDON_URL = "https://community.home-assistant.io/t/recorder-studio-db-an-add-on-that-runs-mariadb-postgresql-or-sqlite-for-your-recorder-with-recorder-studio-built-in/1035261"  # forum topic of the Recorder Studio DB add-on (shown in the setup dialog)
 
 
 def _manifest_version() -> str:

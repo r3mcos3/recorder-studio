@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Recorder Studio",
-        "description": "Adds a sidebar panel to manage the recorder (SQLite only). Using MariaDB or PostgreSQL? See the [Recorder Studio DB add-on](https://community.home-assistant.io/t/recorder-studio-db-an-add-on-that-runs-mariadb-postgresql-or-sqlite-for-your-recorder-with-recorder-studio-built-in/1035261)."
+        "description": "Adds a sidebar panel to manage the recorder (SQLite only). Using MariaDB or PostgreSQL? See the [Recorder Studio DB add-on]({addon_url})."
       }
     },
     "abort": {
