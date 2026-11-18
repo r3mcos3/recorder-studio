@@ -11,13 +11,12 @@ from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 
 from . import service
-from .const import DOMAIN, GENERATED_FILE, LEGACY_FILE, READ_ONLY_MODE, VERSION
+from .const import CONFIG_FILE, DOMAIN, GENERATED_FILE, LEGACY_FILE, READ_ONLY_MODE, VERSION
 from .core import db_stats, migration
 from .core.rules import parse_manual_rules
 from .storage import async_save
 
 T = f"{DOMAIN}/"
-CONFIG_FILE = "configuration.yaml"
 
 
 def _d(hass: HomeAssistant) -> dict:

@@ -16,6 +16,7 @@ VERSION = _manifest_version()
 STORAGE_VERSION = 1
 STORAGE_KEY = f"{DOMAIN}.data"
 
+CONFIG_FILE = "configuration.yaml"
 GENERATED_FILE = "recorder_studio.yaml"
 LEGACY_FILE = "gui_recorder.yaml"  # only ever read, never modified
 
