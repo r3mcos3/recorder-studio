@@ -238,7 +238,7 @@ def test_all_write_commands_are_guarded():
 
     src = (Path(__file__).parent.parent / "custom_components/recorder_studio/websocket_api.py").read_text()
     writers = ["ws_set_recorded", "ws_save_settings", "ws_purge", "ws_repack", "ws_restart",
-               "ws_remove_orphans", "ws_migration_import", "ws_migration_activate"]
+               "ws_remove_orphans", "ws_migration_import"]
     for name in writers:
         body = src.split(f"async def {name}(hass, connection, msg):\n", 1)[1][:200]
         assert "READ_ONLY_MODE" in body, name

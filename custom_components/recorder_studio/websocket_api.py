@@ -1,7 +1,6 @@
 """Admin-only websocket API used by the panel."""
 from __future__ import annotations
 
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -53,7 +52,7 @@ def _need_stats(hass: HomeAssistant) -> dict[str, Any]:
 def async_register(hass: HomeAssistant) -> None:
     for cmd in (
         ws_get_state, ws_set_recorded, ws_save_settings, ws_analyze, ws_preview_purge, ws_purge,
-        ws_repack, ws_restart, ws_remove_orphans, ws_migration_sources, ws_migration_preview, ws_migration_import, ws_migration_activate,
+        ws_repack, ws_restart, ws_remove_orphans, ws_migration_sources, ws_migration_preview, ws_migration_import,
         ws_save_alerts, ws_dismiss_suggestions, ws_backup_status,
     ):
         websocket_api.async_register_command(hass, cmd)
@@ -380,28 +379,3 @@ async def ws_migration_import(hass, connection, msg):
         d["rules_text"] = imp["rules_text"]
     live = await service.async_persist(hass)
     connection.send_result(msg["id"], {"warnings": warnings, "excluded": len(d["excluded_entities"]), "live": live})
-
-
-def _activate_files(config_path: Path) -> str:
-    from .core.yaml_writer import atomic_write
-
-    before = config_path.read_text(encoding="utf-8") if config_path.exists() else ""
-    after = migration.activate(before, GENERATED_FILE)
-    backup = config_path.with_name(f"{config_path.name}.recorder_studio_backup_{datetime.now():%Y%m%d_%H%M%S}")
-    if before:
-        atomic_write(backup, before)
-    atomic_write(config_path, after)
-    return backup.name if before else ""
-
-
-@websocket_api.websocket_command({vol.Required("type"): T + "migration_activate", vol.Required("confirm"): True})
-@websocket_api.require_admin
-@websocket_api.async_response
-async def ws_migration_activate(hass, connection, msg):
-    if READ_ONLY_MODE:
-        connection.send_error(msg["id"], "read_only", "Recorder Studio is in read-only mode: write actions are disabled.")
-        return
-    await service.async_write_yaml(hass)  # the include target must exist before we point to it
-    backup = await hass.async_add_executor_job(_activate_files, Path(hass.config.path(CONFIG_FILE)))
-    hass.data[DOMAIN]["pending_restart"] = True
-    connection.send_result(msg["id"], {"backup": backup})

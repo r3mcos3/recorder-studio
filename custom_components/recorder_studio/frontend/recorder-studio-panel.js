@@ -748,7 +748,7 @@ class RecorderStudioPanel extends LitElement {
     const c = this._data.config;
     const source = c.imported ? "configuration" : c.legacy_file_present ? "legacy" : null;
     if (!source) {
-      this._notify("Nothing to import was found; configuration.yaml can still be activated from the Migration tab.");
+      this._notify("Nothing to import was found; the Migration tab shows how to activate it in configuration.yaml.");
       return;
     }
     await this._previewMigration(source);
@@ -765,7 +765,7 @@ class RecorderStudioPanel extends LitElement {
         <p class="status ${c.state === "active" ? "ok" : ""}">${c.state === "active" ? icon("check", 18) : icon("warn", 18)} ${stateText}</p>
         <ol class="steps">
           <li class=${c.state === "active" ? "done" : ""}><b>1 · Import</b> existing exclusions into Recorder Studio (nothing is changed on disk except <code>${this._data.yaml_file}</code>).</li>
-          <li class=${c.state === "active" ? "done" : ""}><b>2 · Activate</b>: configuration.yaml is backed up, the old block is commented out and <code>recorder: !include ${this._data.yaml_file}</code> is added.</li>
+          <li class=${c.state === "active" ? "done" : ""}><b>2 · Activate</b>: you edit configuration.yaml yourself (Recorder Studio never changes it): replace the old <code>recorder:</code> block with <code>recorder: !include ${this._data.yaml_file}</code>.</li>
           <li><b>3 · Restart</b> Home Assistant.</li>
         </ol>
       </div>
@@ -793,8 +793,10 @@ class RecorderStudioPanel extends LitElement {
         ${m.note ? html`<p class="status">${icon("warn", 18)} ${m.note}</p>` : nothing}
         ${m.import.warnings.length ? html`<ul class="warnings">${m.import.warnings.map((w) => html`<li>${icon("warn", 16)} ${w}</li>`)}</ul>` : nothing}
         <button class="btn primary" ?disabled=${this._ro || !!this._busy} @click=${() => this._confirm({ title: "Import configuration", body: this._merge ? `Adds the ${m.import.excluded_count} imported exclusions to your current ones.` : `Replaces the current exclusions with ${m.import.excluded_count} imported ones.`, confirmLabel: "Import", danger: false, onConfirm: async () => { const r = await this._run("mig", () => this._ws("migration_import", { source: m.source, ...(m.text !== undefined ? { text: m.text } : {}), merge: this._merge, confirm: true }), { success: "Imported." }); if (r) { this._migration = null; await this._refresh(); } } })}>Import now</button>
-        ${m.diff ? html`<h3>Activation diff (configuration.yaml)</h3><pre class="diff">${m.diff.split("\n").map((l) => html`<span class=${l.startsWith("+") && !l.startsWith("+++") ? "add" : l.startsWith("-") && !l.startsWith("---") ? "del" : ""}>${l}\n</span>`)}</pre>
-          <button class="btn danger-o" ?disabled=${this._ro || !!this._busy} @click=${() => this._confirm({ title: "Activate in configuration.yaml", body: "A backup of configuration.yaml is created first. The recorder block is replaced by an include; a restart is needed.", confirmLabel: "Activate", danger: false, onConfirm: async () => { const r = await this._run("mig", () => this._ws("migration_activate", { confirm: true }), { success: (x) => `Activated. Backup: ${x.backup || "none"}` }); if (r) { this._migration = null; await this._refresh(); } } })}>Activate include</button>` : nothing}
+        ${m.diff ? html`<h3>Activate it yourself in configuration.yaml</h3>
+          <p class="muted">Recorder Studio never edits configuration.yaml. Make this change yourself (the diff shows the lines to remove and to add), then restart Home Assistant.</p>
+          <pre class="diff">${m.diff.split("\n").map((l) => html`<span class=${l.startsWith("+") && !l.startsWith("+++") ? "add" : l.startsWith("-") && !l.startsWith("---") ? "del" : ""}>${l}\n</span>`)}</pre>
+          <div class="row"><button class="btn" @click=${() => { try { navigator.clipboard.writeText(`recorder: !include ${this._data.yaml_file}`); this._notify("Copied."); } catch (e) { /* clipboard unavailable */ } }}>Copy include line</button></div>` : nothing}
       </div>` : nothing}`;
   }
 

@@ -110,7 +110,7 @@ async def test_invalid_manual_rules_rejected(ws):
 
 
 # ---- migration through the API -------------------------------------------------
-async def test_migration_preview_import_and_activate(hass, ws, config_dir):
+async def test_migration_preview_import_never_touches_config(hass, ws, config_dir):
     (config_dir / "configuration.yaml").write_text("recorder:\n  exclude:\n    entities:\n      - sensor.old\n")
     sources = (await call(ws, "migration_sources"))["result"]["sources"]
     assert sources[0]["id"] == "configuration" and sources[0]["excluded"] == 1
@@ -118,9 +118,10 @@ async def test_migration_preview_import_and_activate(hass, ws, config_dir):
     assert prev["result"]["import"]["excluded_count"] == 1 and "recorder_studio.yaml" in prev["result"]["diff"]
     imp = await call(ws, "migration_import", source="configuration", confirm=True)
     assert imp["result"]["excluded"] == 1
-    act = await call(ws, "migration_activate", confirm=True)
-    assert act["result"]["backup"].startswith("configuration.yaml.recorder_studio_backup_")
-    assert "!include recorder_studio.yaml" in (config_dir / "configuration.yaml").read_text()
+    assert (config_dir / "recorder_studio.yaml").exists()
+    # configuration.yaml is never modified by Recorder Studio
+    assert (config_dir / "configuration.yaml").read_text() == "recorder:\n  exclude:\n    entities:\n      - sensor.old\n"
+    assert not (await call(ws, "migration_activate", confirm=True))["success"]
 
 
 async def test_migration_rejects_path_escape(ws):

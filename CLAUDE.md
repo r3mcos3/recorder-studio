@@ -24,7 +24,7 @@ custom_components/recorder_studio/
     yaml_writer.py     renders recorder_studio.yaml, atomic write
     db_stats.py        read-only SQLite analysis (counts, dbstat table sizes, file sizes, free space)
     tree.py            device -> entity tree with record counts and percentages
-    migration.py       inspect/import/activate of an existing recorder config (backup + diff)
+    migration.py       inspect/import of an existing recorder config + diff text (configuration.yaml is never written: HACS rule)
     history.py         daily size snapshots, growth trend and forecast
     suggestions.py     heuristic "worth excluding" candidates (never lights/switches/climate; warns on statistics)
     alerts.py          disk/growth alert evaluation, backup age

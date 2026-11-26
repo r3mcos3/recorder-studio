@@ -91,7 +91,7 @@ continue with step 3 above.
 | **Entities** | Device tree with a recording toggle per device and per entity, records and share per row, search, filters and sorting. Changes stay pending until you press **Save changes** (a bar at the bottom shows how many). A trash button on every entity and every device purges its history (the impact is shown first). |
 | **Maintenance** | Purge by retention, purge excluded entities, repack, restart Home Assistant. |
 | **Orphans** | Excluded entities that no longer exist anywhere and have no history. Remove them in bulk; nothing is deleted from the database. |
-| **Migration** | Import an existing recorder config from any of the detected sources, a file or pasted YAML, and activate the include in `configuration.yaml`. |
+| **Migration** | Import an existing recorder config from any of the detected sources, a file or pasted YAML, and get the exact `configuration.yaml` change to apply yourself. |
 | **Settings** | Retention (`purge_keep_days`), auto purge, auto repack, commit interval, optional manual rules and the alert thresholds. |
 
 ### Manual rules
@@ -178,11 +178,11 @@ Open **Migration** (or click *Set up* in the banner). Two steps, each with its o
    warnings instead of being dropped silently, and values that use YAML tags such as `!secret` are never imported as
    plain text. Importing replaces your current exclusions, or, with the checkbox, adds to them, so you can combine
    several sources.
-2. **Activate.** A diff shows exactly what changes in `configuration.yaml`. On confirmation the file is backed up as
-   `configuration.yaml.recorder_studio_backup_<timestamp>`, the old `recorder:` block is commented out and
-   `recorder: !include recorder_studio.yaml` is added.
+2. **Activate (by hand).** Recorder Studio never edits `configuration.yaml`. A diff shows exactly which lines to
+   remove (the old `recorder:` block) and which to add, and a button copies
+   `recorder: !include recorder_studio.yaml`. Apply it in your own editor.
 
-Then restart Home Assistant. To go back at any time, point the include at the old file or restore the backup.
+Then restart Home Assistant. To go back at any time, point the include at the old file.
 
 > If the recorder settings came from a file other than `configuration.yaml` (for example a package), that file is not
 > changed. Remove its `recorder:` section yourself after activating, otherwise Home Assistant reports a duplicate
@@ -192,7 +192,7 @@ Then restart Home Assistant. To go back at any time, point the include at the ol
 
 ### Coming from GUI Recorder
 
-Import from `gui_recorder.yaml`, activate, restart, and check that the Migration tab shows *Active*. After that you
+Import from `gui_recorder.yaml`, make the include change in `configuration.yaml`, restart, and check that the Migration tab shows *Active*. After that you
 can uninstall GUI Recorder. Keep `gui_recorder.yaml` for a while as a fallback; it is inert once
 `configuration.yaml` no longer includes it.
 

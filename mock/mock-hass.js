@@ -94,7 +94,6 @@ export function createMockHass() {
     migration_sources: () => ({ sources: [{ id: "configuration", label: "configuration.yaml (inline recorder: block)", path: "configuration.yaml", kind: "inline", excluded: 23, note: "" }, { id: "legacy", label: "gui_recorder.yaml", path: "gui_recorder.yaml", kind: "legacy", excluded: 46, note: "GUI Recorder's file; it stays untouched and becomes inert after activation." }, { id: "file:packages/recorder.yaml", label: "packages/recorder.yaml", path: "packages/recorder.yaml", kind: "other", excluded: 8, note: "This file is not changed. After activation, remove its recorder: section yourself, otherwise Home Assistant reports a duplicate recorder configuration." }] }),
     migration_preview: ({ source }) => ({ label: source === "legacy" ? "gui_recorder.yaml" : source === "paste" ? "pasted YAML" : source.startsWith("file:") ? source.slice(5) : "configuration.yaml", note: source.startsWith("file:") ? source.slice(5) + " is not changed by Recorder Studio. After activation, remove its recorder: section yourself, otherwise Home Assistant reports a duplicate recorder configuration." : "", current_excluded: 12, import: { excluded_count: source === "legacy" ? 46 : 23, excluded_entities: [], warnings: source === "legacy" ? [] : ["Option 'db_max_retries' is not supported and was left out.", "'db_url' uses a YAML tag (!secret db); set it manually, it was not imported."] }, config_state: S.configState, diff: S.configState === "active" ? "" : diff }),
     migration_import: () => { S.pending_restart = true; return { warnings: [], excluded: 46 }; },
-    migration_activate: () => { S.configState = "active"; S.pending_restart = true; return { backup: "configuration.yaml.recorder_studio_backup_20261114_153012" }; },
   };
   return {
     __S: S,
@@ -103,7 +102,7 @@ export function createMockHass() {
       sendMessagePromise: (msg) => new Promise((res, rej) => setTimeout(() => {
         const fn = handlers[msg.type.replace("recorder_studio/", "")];
         if (!fn) return rej(new Error(`Unknown command ${msg.type}`));
-        if (["purge", "repack", "restart", "migration_import", "migration_activate"].includes(msg.type.split("/")[1]) && msg.confirm !== true) return rej(new Error("confirm required"));
+        if (["purge", "repack", "restart", "migration_import"].includes(msg.type.split("/")[1]) && msg.confirm !== true) return rej(new Error("confirm required"));
         try { res(JSON.parse(JSON.stringify(fn(msg)))); } catch (e) { rej(e); }
       }, 180)),
     },
