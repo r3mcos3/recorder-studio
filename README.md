@@ -58,14 +58,11 @@ history that is no longer wanted.
 
 Home Assistant 2026.11 and newer have the **Marketplace** built in (it replaced HACS); older versions use [HACS](https://hacs.xyz).
 
-1. Click the button at the top of this page. Or, in the Marketplace (**Settings > Marketplace**) choose **Add from link**
-   and enter `r3mcos3/recorder-studio`; in HACS use the three-dot menu > **Custom repositories** with category
-   **Integration**.
+1. Open the Marketplace (**Settings > Marketplace**, or HACS on older versions) and search for **Recorder Studio**
+   (it is in the default catalog), or click the button at the top of this page.
 2. Download **Recorder Studio** and restart Home Assistant.
 3. Go to **Settings > Devices & services > Add integration** and choose **Recorder Studio**.
 4. Open **Recorder Studio** in the sidebar. Later updates show up as an update entity under **Settings > Updates**.
-
-> A repository has to be public to be added. Adding a custom repository needs a (read-only) GitHub connection.
 
 ### Manual
 

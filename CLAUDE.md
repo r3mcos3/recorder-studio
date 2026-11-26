@@ -7,8 +7,8 @@ Guidance for AI agents working on this repository. Read `README.md` first for th
 **Recorder Studio** (`recorder_studio`) is a Home Assistant custom integration: a sidebar panel to control what the
 `recorder` stores (per device / per entity), see what fills the SQLite database, and purge or repack it safely. It is an
 independent re-implementation inspired by GUI Recorder (MIT); no code was copied. Public repo, MIT license, installed
-through the Home Assistant Marketplace (HA 2026.11+, it replaced HACS) or HACS (custom repository; a pull request to
-the default catalog is pending).
+through the Home Assistant Marketplace (HA 2026.11+, it replaced HACS) or HACS; it is in the default catalog
+(hacs/default#14173 merged 2026-11-26).
 
 **SQLite only.** The panel and statistics here are SQLite-only. MariaDB/PostgreSQL are covered by a separate project, the
 Recorder Studio DB add-on (repo `r3mcos3/recorder-studio-db`, runs the database itself and has this panel built in). Do not
@@ -129,9 +129,9 @@ python3 scripts/build_preview.py      # rebuild preview/preview.html
   recorder exclusions), core PR #190600 and frontend PR #55659 (database usage) change state and opens an issue here when
   they do. After handling such an issue, update the baseline in `.github/scripts/upstream_watch.sh`.
 
-- Catalog (default list of the Marketplace/HACS): pull request `hacs/default#14173` is waiting for review (new additions
-  take months). Do not request a review (they close the PR). The README button uses the `marketplace_repository`
-  my-link; the old `hacs_repository` link also still works.
+- Catalog (default list of the Marketplace/HACS): merged 2026-11-26 (hacs/default#14173) after Frenck required that the
+  integration never writes the user's configuration.yaml (so keep it that way). The README button uses the
+  `marketplace_repository` my-link; the old `hacs_repository` link also still works.
 - Parked, not to be built unprompted: MariaDB/PostgreSQL support. Plan: use the recorder's own SQLAlchemy session
   (no `db_url` parsing), generic `states JOIN states_meta GROUP BY` counts, sizes via `information_schema.TABLES`
   (MariaDB) or `pg_database_size`/`pg_total_relation_size` (PostgreSQL), label as experimental, test the SQL in GitHub
